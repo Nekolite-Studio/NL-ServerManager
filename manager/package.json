@@ -1,0 +1,37 @@
+{
+  "name": "manager",
+  "version": "0.1.0",
+  "description": "GUI Management Console for Minecraft Servers",
+  "main": "main.js",
+  "scripts": {
+    "start": "npm run build && electron .",
+    "dev": "electron . --no-sandbox",
+    "build": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^39.1.2",
+    "electron-builder": "^24.13.3",
+    "ws": "^8.17.0"
+  },
+  "build": {
+    "appId": "com.example.servermanager",
+    "productName": "ServerManager",
+    "files": [
+      "main.js",
+      "index.html",
+      "preload.js"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    }
+  }
+}

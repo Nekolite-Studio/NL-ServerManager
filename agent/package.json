@@ -1,0 +1,11 @@
+{
+  "name": "agent",
+  "version": "0.1.0",
+  "description": "Server agent to be controlled by the manager",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {}
+}

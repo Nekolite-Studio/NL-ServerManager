@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Hello World!</title>
+</head>
+<body>
+    <h1>Hello World!</h1>
+    We are using Node.js <script>document.write(process.versions.node)</script>,
+    Chromium <script>document.write(process.versions.chrome)</script>,
+    and Electron <script>document.write(process.versions.electron)</script>.
+
+    <div id="ping-status"></div>
+
+    <script>
+      const ws = new WebSocket('ws://localhost:8080');
+      const pingStatus = document.getElementById('ping-status');
+
+      ws.onopen = () => {
+        console.log('Connected to WebSocket server');
+        ws.send('Hello from the client!');
+      };
+
+      ws.onmessage = event => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'ping') {
+            pingStatus.textContent = `Last ping at: ${message.timestamp}`;
+          } else {
+            console.log(`Received message: ${event.data}`);
+          }
+        } catch (e) {
+          console.log(`Received message: ${event.data}`);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('Disconnected from WebSocket server');
+      };
+
+      ws.onerror = error => {
+        console.error(`WebSocket error: ${error}`);
+      };
+    </script>
+</body>
+</html>

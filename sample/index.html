@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>統合サーバー管理ダッシュボード v6</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Interフォント -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        [contenteditable="true"]:empty:before {
+            content: attr(placeholder);
+            color: #9ca3af; /* gray-400 */
+            pointer-events: none;
+            display: block;
+        }
+        /* スクロールバー */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .dark .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        
+        /* チェックボックス (v4) */
+        .form-switch { display: inline-flex; align-items: center; cursor: pointer; }
+        .form-switch .form-switch-toggle { position: relative; width: 40px; height: 20px; background-color: #e5e7eb; border-radius: 9999px; transition: background-color 0.2s ease; }
+        .dark .form-switch .form-switch-toggle { background-color: #374151; }
+        .form-switch .form-switch-toggle:after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: white; border-radius: 9999px; transition: transform 0.2s ease; }
+        .form-switch input:checked + .form-switch-toggle { background-color: #4f46e5; }
+        .form-switch input:checked + .form-switch-toggle:after { transform: translateX(20px); }
+
+        /* D&D (v4) */
+        .dragging { opacity: 0.5; transform: scale(0.95); }
+        .drop-target-highlight { border-style: dashed; border-color: #4f46e5; background-color: #e0e7ff; }
+        .dark .drop-target-highlight { border-color: #818cf8; background-color: #312e81; }
+
+        /* --- v5で追加 --- */
+        /* ログの行数制限 (3.5行) */
+        .log-clamp {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            overflow: hidden;
+            /* text-xs (12px) * line-height (1.5) = 18px. 3.5行 = 63px */
+            max-height: 3.9375rem; 
+        }
+
+        /* --- v6で追加 --- */
+        /* メモドロップダウンボタンの回転 */
+        .rotate-180 {
+            transform: rotate(180deg);
+        }
+    </style>
+    <!-- ダークモード設定 -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { 'primary': '#4f46e5', 'secondary': '#10b981', 'danger': '#ef4444', 'warning': '#f59e0b' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 antialiased">
+
+    <div id="app" class="flex flex-col lg:flex-row min-h-screen">
+
+        <!-- サイドバー (v4と同じ) -->
+        <aside id="sidebar" class="bg-white dark:bg-gray-800 p-4 lg:w-64 lg:flex-shrink-0 shadow-lg lg:h-screen lg:sticky lg:top-0">
+            <h1 class="text-2xl font-bold text-primary mb-6 border-b border-gray-200 dark:border-gray-700 pb-3">
+                <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"></path></svg>
+                Server Manager
+            </h1>
+            <nav>
+                <ul class="space-y-2">
+                    <!-- ゲームサーバー一覧 -->
+                    <li>
+                        <a href="#" id="nav-game-servers" class="flex items-center p-3 rounded-lg text-white bg-primary transition duration-150">
+                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0h6"></path></svg>
+                            ゲームサーバー
+                        </a>
+                    </li>
+                    <!-- 物理サーバー一覧 -->
+                    <li>
+                        <a href="#" id="nav-physical-servers" class="flex items-center p-3 rounded-lg text-gray-600 dark:text-gray-300 transition duration-150 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h1m-1 0h-1m-14 0h1m-1 0h-1"></path></svg>
+                            物理サーバー
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" class="flex items-center p-3 rounded-lg text-gray-600 dark:text-gray-300 transition duration-150 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                            設定ファイル
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- メインコンテンツ -->
+        <main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto" style="max-height: 100vh;">
+            
+            <!-- サーバー一覧画面 -->
+            <div id="server-list-view">
+                <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">ゲームサーバー管理</h1>
+                        <p class="text-gray-500 dark:text-gray-400">実行中のサーバーを確認・管理します。</p>
+                    </div>
+                    <div class="flex items-center gap-4 w-full sm:w-auto">
+                        <button id="dark-mode-toggle" class="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-indigo-400 transition duration-150">
+                            <svg id="sun-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                            <svg id="moon-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                        </button>
+                        <button id="add-server-btn" class="w-full sm:w-auto bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300 flex items-center justify-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                            <span>新規サーバー作成</span>
+                        </button>
+                    </div>
+                </header>
+                <!-- v5: グリッド定義を見直し (固定幅と可変幅を混在させ、ズレを防止) -->
+                <div class="hidden md:grid grid-cols-[minmax(150px,_2fr)_minmax(150px,_1.5fr)_minmax(200px,_3fr)_minmax(150px,_1.5fr)_1fr_1fr_1.5fr] gap-4 px-4 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <span>サーバー名</span>
+                    <span>ホストマシン</span>
+                    <span>直近のログ</span>
+                    <span>最近のプレイヤー</span>
+                    <span>参加人数</span>
+                    <span>TPS</span>
+                    <span>ステータス</span>
+                </div>
+                <main id="server-list" class="space-y-4 mt-4"></main>
+            </div>
+
+            <!-- 物理サーバー一覧画面 (v4と同じ) -->
+            <div id="physical-server-list-view" class="hidden">
+                <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">物理サーバー管理</h1>
+                        <p class="text-gray-500 dark:text-gray-400">エージェントが稼働中のマシンを管理します。</p>
+                    </div>
+                    <button id="add-agent-btn" class="w-full sm:w-auto bg-secondary hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300 flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                        <span>エージェント登録</span>
+                    </button>
+                </header>
+                <div class="space-y-4 mt-4">
+                    <!-- 物理サーバーのダミーデータ (v4と同じ) -->
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                        <div>
+                            <div class="font-bold text-lg text-gray-900 dark:text-white">リビングPC</div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">192.168.1.10:8080</div>
+                        </div>
+                        <div>
+                            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                接続中 (Windows)
+                            </span>
+                        </div>
+                        <div>
+                            <div class="text-sm">CPU: <span class="font-medium">15.2%</span></div>
+                            <div class="text-sm">メモリ: <span class="font-medium">8.2 GB / 16.0 GB</span></div>
+                        </div>
+                        <div>
+                            <div class="text-sm">稼働サーバー数: <span class="font-medium">2</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                        <div>
+                            <div class="font-bold text-lg text-gray-900 dark:text-white">研究室サーバー</div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">192.168.1.20:8080</div>
+                        </div>
+                        <div>
+                            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                                <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+                                切断 (Ubuntu)
+                            </span>
+                        </div>
+                        <div><div class="text-sm">CPU: <span class="font-medium">N/A</span></div><div class="text-sm">メモリ: <span class="font-medium">N/A</span></div></div>
+                        <div><div class="text-sm">稼働サーバー数: <span class="font-medium">1</span></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- サーバー詳細画面 (v6でレイアウト改修) -->
+            <div id="server-detail-view" class="hidden">
+                <!-- この中身をv6で丸ごと入れ替え -->
+            </div>
+
+        </main>
+    </div>
+
+    <!-- 削除確認モーダル (v4と同じ) -->
+    <div id="delete-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md text-center">
+            <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900">
+                <svg class="h-6 w-6 text-red-600 dark:text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">サーバーを削除</h3>
+            <div class="mt-2">
+                <p class="text-sm text-gray-500 dark:text-gray-400">サーバー「<span id="deleting-server-name" class="font-bold"></span>」を本当に削除しますか？<br>この操作は元に戻せません。</p>
+            </div>
+            <div class="mt-6 flex justify-center gap-4">
+                <button id="confirm-delete-btn" type="button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">削除する</button>
+                <button id="cancel-delete-btn" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- データ定義 (v5でMod/Pluginを分離) ---
+            const defaultServerProperties = {
+                'spawn-protection': 16, 'max-tick-time': 60000, 'query.port': 25565, 'generator-settings': '', 'force-gamemode': false, 'allow-nether': true, 'enforce-whitelist': false, 'gamemode': 'survival', 'broadcast-console-to-ops': true, 'enable-query': false, 'player-idle-timeout': 0, 'difficulty': 'easy', 'spawn-monsters': true, 'broadcast-rcon-to-ops': true, 'op-permission-level': 4, 'pvp': true, 'snooper-enabled': true, 'level-type': 'default', 'hardcore': false, 'enable-command-block': false, 'max-players': 20, 'network-compression-threshold': 256, 'resource-pack-sha1': '', 'max-world-size': 29999984, 'function-permission-level': 2, 'rcon.port': 25575, 'server-port': 25565, 'server-ip': '', 'spawn-npcs': true, 'allow-flight': false, 'level-name': 'world', 'view-distance': 10, 'resource-pack': '', 'spawn-animals': true, 'white-list': false, 'rcon.password': '', 'generate-structures': true, 'max-build-height': 256, 'online-mode': true, 'level-seed': '', 'prevent-proxy-connections': false, 'use-native-transport': true, 'enable-rcon': false, 'motd': 'A Minecraft Server'
+            };
+
+            const physicalServers = [
+                { id: 1, name: 'リビングPC', ip: '192.168.1.10:8080', os: 'Windows', status: 'connected', cpu: 15.2, memUsed: 8.2, memMax: 16.0 },
+                { id: 2, name: '研究室サーバー', ip: '192.168.1.20:8080', os: 'Ubuntu', status: 'disconnected', cpu: 0, memUsed: 0, memMax: 32.0 },
+            ];
+
+            // v5: ライブラリをModとPluginに分離
+            const modLibrary = [
+                { id: 'mod1', name: 'OptiFine_1.19.2_HD_U_H9.jar', size: '7.1MB' },
+                { id: 'mod2', name: 'journeymap-1.19.2-5.9.0-fabric.jar', size: '3.5MB' },
+                { id: 'mod3', name: 'jei-1.19.2-fabric-11.5.0.298.jar', size: '980KB' },
+            ];
+            const pluginLibrary = [
+                { id: 'plugin1', name: 'WorldEdit-Bukkit-7.2.10.jar', size: '2.8MB' },
+                { id: 'plugin2', name: 'EssentialsX-2.19.7.jar', size: '1.2MB' },
+            ];
+
+            const state = {
+                servers: [
+                    { id: 1, hostId: 1, name: 'バニラサバイバル', status: 'running', memo: '友人とのんびり遊ぶためのサーバーです。\nMODは入れていません。\n\nこれは3行目です。\nこれは4行目です。', players: { current: 12, max: 32, list: ['Player1', 'Player2', 'Steve', 'Alex', 'Notch', 'Herobrine', 'Creeper', 'Zombie', 'Skeleton', 'Enderman', 'Villager', 'Pillager'], recent: ['Player1', 'Player2', 'Steve'] }, tps: 19.8, cpu: 45.2, memory: 3072, memoryMax: 8192, logs: ['[12:34:56] [Server thread/INFO]: Player1 joined the game', '[12:34:58] [Server thread/INFO]: Player2 joined the game', '[12:35:01] [INFO]: Steve fell from a high place', '[12:35:15] [INFO]: Player1 reached advancement [Stone Age]', '[12:35:20] [INFO]: Player2 reached advancement [Getting an Upgrade]'], properties: { ...defaultServerProperties }, installedMods: [], installedPlugins: [{ id: 'plugin1', name: 'WorldEdit-Bukkit-7.2.10.jar', size: '2.8MB', enabled: true }] },
+                    { id: 2, hostId: 1, name: 'MODてんこ盛りサーバー (Fabric)', status: 'stopped', memo: '工業、魔術、建築など、様々なMODを導入しています。\nメモリ割り当ては多めに設定してください。\n\nこれは3行目です。\nこれは4行目です。\nこれは5行目です。\nこれは6行目です。\nこれは7行目です。\nこれは8行目です。\nこれは9行目です。', players: { current: 0, max: 20, list: [], recent: ['TechnoMage', 'BuilderPro', 'MagicGirl'] }, tps: 0.0, cpu: 0.0, memory: 0, memoryMax: 16384, logs: ['[20:10:05] [Server thread/INFO]: Stopping server', '[20:10:04] [Server thread/INFO]: Saving chunks', '[20:10:02] [INFO]: TechnoMage left the game'], properties: { ...defaultServerProperties, 'gamemode': 'creative', 'difficulty': 'normal', 'allow-flight': true }, installedMods: [{ id: 'mod2', name: 'journeymap-1.19.2-5.9.0-fabric.jar', size: '3.5MB', enabled: true }, { id: 'mod3', name: 'jei-1.19.2-fabric-11.5.0.298.jar', size: '980KB', enabled: false }], installedPlugins: [] },
+                    { id: 3, hostId: 2, name: 'クリエイティブ建築ワールド (Paper)', status: 'running', memo: '巨大建築プロジェクト進行中！\n誰でも参加OKです。', players: { current: 5, max: 50, list: ['Architector', 'PixelArtist', 'Redstoner', 'Deko', 'Boko'], recent: ['Architector', 'PixelArtist', 'Redstoner'] }, tps: 20.0, cpu: 20.5, memory: 2048, memoryMax: 8192, logs: ['[18:00:11] [Server thread/INFO]: Architector joined the game', '[18:00:25] [Server thread/INFO]: PixelArtist joined the game', '[18:01:00] [INFO]: Weather set to clear'], properties: { ...defaultServerProperties, 'gamemode': 'creative', 'pvp': false, 'spawn-monsters': false }, installedMods: [], installedPlugins: [] },
+                ],
+                currentView: 'list', // 'list', 'detail', 'physical'
+                selectedServerId: null, 
+                serverToDeleteId: null,
+                detailActiveTab: 'basic', // v5: basic, mods, plugins, players, danger
+                detailBasicActiveSubTab: 'log',
+            };
+
+            // --- DOM要素 ---
+            const serverListView = document.getElementById('server-list-view');
+            const physicalServerListView = document.getElementById('physical-server-list-view');
+            const serverDetailView = document.getElementById('server-detail-view');
+            const serverListContainer = document.getElementById('server-list');
+            const addServerBtn = document.getElementById('add-server-btn');
+            const deleteModal = document.getElementById('delete-modal');
+            const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+            const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+            const deletingServerNameSpan = document.getElementById('deleting-server-name');
+            const darkModeToggle = document.getElementById('dark-mode-toggle');
+            const sunIcon = document.getElementById('sun-icon');
+            const moonIcon = document.getElementById('moon-icon');
+            const navGameServers = document.getElementById('nav-game-servers');
+            const navPhysicalServers = document.getElementById('nav-physical-servers');
+
+            // --- ユーティリティ関数 (v4と同じ) ---
+            const getStatusClasses = (status) => {
+                if (status === 'running') return { text: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-500/20' };
+                return { text: 'text-red-600 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-500/20' };
+            };
+            const getTpsColor = (tps) => tps >= 19 ? 'text-green-500' : tps >= 15 ? 'text-yellow-500' : 'text-red-500';
+            const getCpuColor = (cpu) => cpu >= 80 ? 'text-red-500' : cpu >= 50 ? 'text-yellow-500' : 'text-green-500';
+            const getMemoryColor = (mem, max) => (mem/max) >= 0.8 ? 'text-red-500' : (mem/max) >= 0.5 ? 'text-yellow-500' : 'text-green-500';
+
+            // --- レンダリング関数 (v5で更新) ---
+            const renderServerList = () => {
+                serverListContainer.innerHTML = '';
+                state.servers.forEach(server => {
+                    const tpsColor = getTpsColor(server.tps);
+                    const host = physicalServers.find(p => p.id === server.hostId);
+                    const serverElement = document.createElement('div');
+                    serverElement.className = 'server-item-container bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-primary dark:hover:ring-primary';
+                    serverElement.dataset.serverId = server.id;
+                    // v5: グリッド定義とログクランプを適用
+                    serverElement.innerHTML = `
+                        <div class="grid md:grid-cols-[minmax(150px,_2fr)_minmax(150px,_1.5fr)_minmax(200px,_3fr)_minmax(150px,_1.5fr)_1fr_1fr_1.5fr] gap-4 p-4 items-center">
+                            <!-- サーバー名 -->
+                            <div class="flex flex-col col-span-full md:col-span-1 overflow-hidden">
+                                <span class="md:hidden text-xs text-gray-500 dark:text-gray-400">サーバー名</span>
+                                <div contenteditable="true" data-field="name" class="font-bold text-lg text-gray-900 dark:text-white truncate editable" placeholder="サーバー名を入力">${server.name}</div>
+                            </div>
+                            <!-- ホストマシン (v5でtruncate追加) -->
+                            <div class="col-span-full md:col-span-1 overflow-hidden">
+                                <span class="md:hidden text-xs text-gray-500 dark:text-gray-400 mb-1">ホストマシン</span>
+                                <div class="text-sm text-gray-600 dark:text-gray-300 truncate">${host ? host.name : '未割り当て'}</div>
+                                <div class="text-xs text-gray-400 truncate">${host ? host.ip : ''}</div>
+                            </div>
+                            <!-- ログ (v5でlog-clamp適用) -->
+                            <div class="col-span-full md:col-span-1">
+                                <span class="md:hidden text-xs text-gray-500 dark:text-gray-400 mb-1">直近のログ</span>
+                                <div class="text-xs text-gray-500 dark:text-gray-400 space-y-1 log-clamp leading-relaxed">${server.logs.slice(-4).map(log => `<p class="truncate">${log}</p>`).join('')}</div>
+                            </div>
+                            <!-- プレイヤー -->
+                            <div class="col-span-full md:col-span-1">
+                                <span class="md:hidden text-xs text-gray-500 dark:text-gray-400 mb-1">最近のプレイヤー</span>
+                                <div class="flex flex-wrap gap-2">${server.players.recent.length > 0 ? server.players.recent.map(player => `<span class="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium px-2.5 py-1 rounded-full">${player}</span>`).join('') : '<span class="text-xs text-gray-400">なし</span>'}</div>
+                            </div>
+                            <!-- 人数 -->
+                            <div class="col-span-1"><span class="md:hidden text-xs text-gray-500 dark:text-gray-400">参加人数</span><p class="font-mono">${server.players.current}/${server.players.max}</p></div>
+                            <!-- TPS -->
+                            <div class="col-span-1"><span class="md:hidden text-xs text-gray-500 dark:text-gray-400">TPS</span><p class="font-mono font-bold ${tpsColor}">${server.status === 'running' ? server.tps.toFixed(1) : '-'}</p></div>
+                            <!-- ステータスボタン -->
+                            <div class="col-span-full sm:col-span-1">
+                                <button data-action="toggle-status" class="w-full font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}">
+                                    ${server.status === 'running' ? '停止' : '起動'}
+                                </button>
+                            </div>
+                        </div>`;
+                    serverListContainer.appendChild(serverElement);
+                });
+            };
+            
+            // server.properties 入力フィールド生成 (v4と同じ)
+            const createPropertyInput = (key, value) => {
+                const type = typeof value;
+                let inputHtml = '';
+                const baseInputClasses = "w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary";
+                
+                if (type === 'boolean') {
+                    inputHtml = `<label for="${key}" class="form-switch"><input type="checkbox" id="${key}" class="hidden" ${value ? 'checked' : ''}><div class="form-switch-toggle"></div></label>`;
+                } else if (key === 'gamemode') {
+                    inputHtml = `<select id="${key}" class="${baseInputClasses}">${['survival', 'creative', 'adventure', 'spectator'].map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+                } else if (key === 'difficulty') {
+                    inputHtml = `<select id="${key}" class="${baseInputClasses}">${['peaceful', 'easy', 'normal', 'hard'].map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+                } else if (type === 'number') {
+                    inputHtml = `<input type="number" id="${key}" value="${value}" class="${baseInputClasses}">`;
+                } else {
+                    const inputType = key.includes('password') ? 'password' : 'text';
+                    inputHtml = `<input type="${inputType}" id="${key}" value="${value}" class="${baseInputClasses}">`;
+                }
+                
+                return `<div class="grid grid-cols-3 gap-4 items-center">
+                            <label for="${key}" class="text-sm text-gray-500 dark:text-gray-400 truncate col-span-1">${key}</label>
+                            <div class="col-span-2">${inputHtml}</div>
+                        </div>`;
+            };
+            
+            // server.properties エディタレンダリング (v4と同じ)
+            const renderPropertiesEditor = (server) => {
+                const properties = server.properties;
+                const propertyGroups = {
+                    'ワールド設定': ['level-name', 'level-seed', 'level-type', 'generator-settings', 'generate-structures', 'allow-nether', 'hardcore', 'difficulty', 'gamemode', 'force-gamemode'],
+                    'プレイヤー設定': ['max-players', 'pvp', 'allow-flight', 'enforce-whitelist', 'white-list', 'player-idle-timeout', 'spawn-protection', 'op-permission-level', 'function-permission-level'],
+                    'MOB・NPC設定': ['spawn-animals', 'spawn-monsters', 'spawn-npcs'],
+                    'サーバー技術設定': ['server-port', 'server-ip', 'online-mode', 'prevent-proxy-connections', 'network-compression-threshold', 'max-tick-time', 'view-distance', 'max-build-height', 'max-world-size', 'use-native-transport', 'snooper-enabled'],
+                    'その他': ['motd', 'resource-pack', 'resource-pack-sha1', 'enable-command-block'],
+                    'Query & RCON': ['enable-query', 'query.port', 'enable-rcon', 'rcon.port', 'rcon.password', 'broadcast-console-to-ops', 'broadcast-rcon-to-ops']
+                };
+                let html = '<div id="properties-editor" class="space-y-6 custom-scrollbar pr-2">';
+                for (const groupName in propertyGroups) {
+                    html += `<fieldset class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                                <legend class="text-lg font-semibold text-gray-900 dark:text-white px-2">${groupName}</legend>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    ${propertyGroups[groupName].map(key => createPropertyInput(key, properties[key])).join('')}
+                                </div>
+                            </fieldset>`;
+                }
+                html += '</div>';
+                return html;
+            };
+
+            // v5: Mod/Pluginライブラリ（D&D元）のレンダリング
+            // type: 'mod' or 'plugin'
+            const renderAddonLibrary = (type) => {
+                const library = (type === 'mod') ? modLibrary : pluginLibrary;
+                return `
+                    <div id="addon-library-list" class="mt-4 space-y-2 custom-scrollbar pr-2" style="max-height: calc(100vh - 450px); overflow-y: auto;">
+                        ${library.map(item => `
+                            <div class="addon-item bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 cursor-grab" 
+                                draggable="true" 
+                                data-addon-id="${item.id}"
+                                data-addon-type="${type}">
+                                <div class="font-medium truncate">${item.name}</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">${item.size}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            };
+
+            // v5: サーバー側Mod/Pluginリスト（D&D先）のレンダリング
+            // type: 'mod' or 'plugin'
+            const renderServerAddons = (server, type) => {
+                const addonList = (type === 'mod') ? server.installedMods : server.installedPlugins;
+                const typeName = (type === 'mod') ? 'Mod' : 'Plugin';
+                return `
+                    <div id="server-addon-list" 
+                        class="bg-gray-50 dark:bg-gray-900 border-2 border-transparent dark:border-transparent rounded-lg p-4 space-y-2 transition-all duration-300"
+                        style="min-height: calc(100vh - 250px); max-height: calc(100vh - 250px); overflow-y: auto;"
+                        data-drop-type="${type}">
+                        
+                        ${addonList.length === 0 ? `<p class="text-center text-gray-500 dark:text-gray-400 mt-10">ライブラリから${typeName}をドラッグ＆ドロップしてください</p>` : ''}
+
+                        ${addonList.map(item => `
+                            <div class="server-addon-item flex justify-between items-center bg-white dark:bg-gray-800 p-3 rounded shadow-sm border border-gray-200 dark:border-gray-700" 
+                                data-installed-id="${item.id}"
+                                data-addon-type="${type}">
+                                <div>
+                                    <div class="font-medium truncate">${item.name}</div>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400">${item.size}</div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="form-switch">
+                                        <input type="checkbox" class="hidden toggle-addon-enabled" ${item.enabled ? 'checked' : ''}>
+                                        <div class="form-switch-toggle"></div>
+                                    </label>
+                                    <button data-action="remove-addon" class="text-red-500 hover:text-red-700" title="削除">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            };
+
+
+            // --- v6: 詳細ビューのレンダリング (レイアウト大幅改修) ---
+            const renderServerDetail = () => {
+                const server = state.servers.find(s => s.id === state.selectedServerId);
+                if (!server) return;
+                
+                const host = physicalServers.find(p => p.id === server.hostId);
+                const statusClasses = getStatusClasses(server.status);
+                const tpsColor = getTpsColor(server.tps);
+                const cpuColor = getCpuColor(server.cpu);
+                const memColor = getMemoryColor(server.memory, server.memoryMax);
+
+                // v6: メモの行数計算とプレビュー生成
+                const memoLines = (server.memo || '').split('\n');
+                const memoLineCount = memoLines.length;
+                const showToggleButton = memoLineCount >= 5;
+                const previewMemo = memoLines[0] || 'メモなし'; // 1行目だけ表示
+
+                serverDetailView.innerHTML = `
+                    <!-- ヘッダー -->
+                    <div>
+                        <button id="back-to-list-btn" class="text-primary hover:text-indigo-700 dark:hover:text-indigo-300 mb-4 inline-flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                            サーバー一覧に戻る
+                        </button>
+                        
+                        <!-- v6: ヘッダーレイアウト変更 (メモ追加) -->
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <!-- サーバー名 -->
+                            <div class="flex-grow min-w-0">
+                                <div contenteditable="true" data-field="name" class="text-3xl font-bold editable truncate" placeholder="サーバー名を入力">${server.name}</div>
+                                <div class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">
+                                    ホスト: <span class="font-medium text-gray-700 dark:text-gray-300">${host ? host.name : '未割り当て'}</span> (${host ? host.ip : 'N/A'})
+                                </div>
+                            </div>
+
+                            <!-- v6: メモ (ドロップダウン) -->
+                            <div id="memo-dropdown-container" class="relative mx-4 flex-shrink min-w-0 hidden lg:block" style="max-width: 25%;">
+                                <!-- 格納状態のプレビュー -->
+                                <div class="flex items-center justify-end gap-2">
+                                    <p class="text-sm text-gray-500 dark:text-gray-400 truncate" title="${server.memo.replace(/"/g, '&quot;')}">
+                                        ${previewMemo}
+                                    </p>
+                                    <!-- 5行以上の場合のみボタン表示 -->
+                                    ${showToggleButton ? `
+                                        <button data-action="toggle-memo-dropdown" id="memo-toggle-btn" class="flex-shrink-0 p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-transform duration-200">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                        </button>
+                                    ` : ''}
+                                </div>
+
+                                <!-- 展開状態のコンテナ (編集機能もこちらに移動) -->
+                                ${showToggleButton ? `
+                                    <div id="memo-dropdown-content" class="hidden absolute top-full mt-2 right-0 w-[40rem] max-w-2xl z-20 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700"
+                                         style="min-height: 10rem; /* 最小8行分 */ max-height: 50vh; /* 最大 画面の半分 */ overflow-y: auto;">
+                                        <div class="p-4 h-full flex flex-col">
+                                            <h3 class="text-gray-500 dark:text-gray-400 text-sm font-semibold mb-2">メモ</h3>
+                                            <!-- 展開時のみ編集可能 -->
+                                            <div contenteditable="true" data-field="memo" class="flex-1 text-gray-700 dark:text-gray-300 whitespace-pre-wrap editable min-h-[10rem] custom-scrollbar" 
+                                                placeholder="メモを入力...">${server.memo}</div>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+
+                            <!-- ボタン -->
+                            <div class="flex items-center gap-2 w-full sm:w-auto">
+                                <button data-action="open-dir" class="w-1/2 sm:w-auto bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex-grow">フォルダ</button>
+                                <button data-action="toggle-status" class="w-1/2 sm:w-auto font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 flex-grow ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}">${server.status === 'running' ? '停止' : '起動'}</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- v5: ステータスカード (ヘッダー直下) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+                        <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">ステータス</div>
+                            <div class="text-2xl font-bold ${statusClasses.text} mt-1">${server.status === 'running' ? '起動中' : '停止中'}</div>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">プレイヤー</div>
+                            <div class="text-4xl font-extrabold text-primary mt-1">${server.players.current} <span class="text-lg text-gray-500">/ ${server.players.max}</span></div>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">TPS</div>
+                            <div class="text-4xl font-extrabold ${tpsColor} mt-1">${server.status === 'running' ? server.tps.toFixed(1) : '-'}</div>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU / メモリ</div>
+                            <div class="text-2xl font-bold ${cpuColor} mt-1">${server.status === 'running' ? server.cpu.toFixed(1) : '0.0'}%</div>
+                            <div class="text-sm ${memColor} mt-1">${(server.memory / 1024).toFixed(1)} GB / ${(server.memoryMax / 1024).toFixed(1)} GB</div>
+                        </div>
+                    </div>
+
+                    <!-- v6: 3カラムレイアウト (幅指定変更) -->
+                    <!-- lg:flex-row-reverse を使用し、メインエリアに flex-1 を適用して残りすべてを占有させる -->
+                    <div class="flex flex-col lg:flex-row-reverse gap-6 mt-6">
+                        
+                        <!-- カラム3: メイン編集エリア (残りすべて) -->
+                        <div class="lg:flex-1">
+                            <div id="detail-main-area" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" style="height: calc(100vh - 400px);">
+                                <!-- 内容は updateDetailViewContent で動的に挿入 -->
+                            </div>
+                        </div>
+                        
+                        <!-- カラム2: コンテキスト情報 (メモと同じ幅, w-autoでコンテンツ幅に合わせる) -->
+                        <div id="detail-context-area" class="lg:w-auto lg:flex-shrink-0">
+                            <!-- 内容は updateDetailViewContent で動的に挿入 -->
+                        </div>
+
+                        <!-- カラム1: タブナビ (最小コンテンツ幅, w-autoでコンテンツ幅に合わせる) -->
+                        <!-- v6: メモを削除 -->
+                        <div class="lg:w-auto lg:flex-shrink-0 space-y-6">
+                            <!-- タブ (w-full はタブボタン内で指定) -->
+                            <nav class="flex lg:flex-col space-x-2 lg:space-x-0 lg:space-y-2 w-fit" aria-label="Tabs">
+                                <button data-tab="basic" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'basic' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}">基本設定</button>
+                                <button data-tab="mods" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'mods' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}">Mod</button>
+                                <button data-tab="plugins" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'plugins' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}">Plugin</button>
+                                <button data-tab="players" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'players' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}">プレイヤー</button>
+                                <button data-tab="danger" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'danger' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}">その他</button>
+                            </nav>
+                            <!-- メモはヘッダーに移動したため、ここからは削除 -->
+                        </div>
+
+                    </div>
+                `;
+                
+                // --- 詳細ビュー用のイベントリスナーを追加 ---
+                document.getElementById('back-to-list-btn').addEventListener('click', showListView);
+                
+                // v5: タブ切り替えリスナー
+                serverDetailView.querySelectorAll('.detail-tab-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        state.detailActiveTab = e.currentTarget.dataset.tab;
+                        updateDetailView(); // UI全体を再描画
+                    });
+                });
+
+                // v5: 初期表示 (タブに基づいたコンテンツの挿入)
+                updateDetailViewContent(server);
+            };
+
+            // v5: 詳細ビューのタブ内容を更新する関数 (レイアウト変更)
+            const updateDetailViewContent = (server) => {
+                const contextArea = document.getElementById('detail-context-area');
+                const mainArea = document.getElementById('detail-main-area');
+                if (!contextArea || !mainArea) return;
+
+                server = server || state.servers.find(s => s.id === state.selectedServerId);
+                if (!server) return;
+
+                switch(state.detailActiveTab) {
+                    case 'basic':
+                        // カラム2: 起動構成 (v6: 幅がautoになる)
+                        contextArea.innerHTML = `
+                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
+                                <h3 class="text-lg font-semibold">起動構成</h3>
+                                <div>
+                                    <label for="java-path" class="text-sm font-medium text-gray-500 dark:text-gray-400">Java実行パス</label>
+                                    <input type="text" id="java-path" value="default" class="mt-1 w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                                <div>
+                                    <label for="memory-alloc" class="text-sm font-medium text-gray-500 dark:text-gray-400">メモリ割り当て (MB)</label>
+                                    <input type="number" id="memory-alloc" value="${server.memoryMax}" class="mt-1 w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                                <button class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg">
+                                    構成を保存
+                                </button>
+                            </div>
+                        `;
+                        // カラム3: ログ/Properties
+                        mainArea.innerHTML = `
+                            <div class="flex border-b border-gray-200 dark:border-gray-700">
+                                <button data-subtab="log" class="flex-1 detail-subtab-btn px-4 py-3 font-medium text-sm ${state.detailBasicActiveSubTab === 'log' ? 'text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}">コンソール / ログ</button>
+                                <button data-subtab="props" class="flex-1 detail-subtab-btn px-4 py-3 font-medium text-sm ${state.detailBasicActiveSubTab === 'props' ? 'text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}">サーバー設定 (properties)</button>
+                            </div>
+                            <div id="detail-basic-content" class="p-4" style="height: calc(100% - 50px); overflow-y: auto;">
+                                <!-- 内容は updateDetailBasicSubTab で挿入 -->
+                            </div>
+                        `;
+                        updateDetailBasicSubTab(server);
+                        break;
+                    
+                    case 'mods':
+                        // カラム2: Modライブラリ
+                        contextArea.innerHTML = `
+                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                                <h3 class="text-gray-500 dark:text-gray-400 text-sm font-semibold mb-3">Mod ライブラリ</h3>
+                                ${renderAddonLibrary('mod')}
+                            </div>
+                        `;
+                        // カラム3: サーバー側Modリスト
+                        mainArea.innerHTML = `
+                            <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                                <h3 class="text-lg font-semibold">インストール済み Mod (${server.installedMods.length})</h3>
+                                <button data-action="save-addons" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition-colors duration-300">変更を保存</button>
+                            </div>
+                            <div class="p-4">
+                                ${renderServerAddons(server, 'mod')}
+                            </div>
+                        `;
+                        setupDragAndDrop(server, 'mod');
+                        break;
+                    
+                    case 'plugins':
+                        // カラム2: Pluginライブラリ
+                        contextArea.innerHTML = `
+                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                                <h3 class="text-gray-500 dark:text-gray-400 text-sm font-semibold mb-3">Plugin ライブラリ</h3>
+                                ${renderAddonLibrary('plugin')}
+                            </div>
+                        `;
+                        // カラム3: サーバー側Pluginリスト
+                        mainArea.innerHTML = `
+                            <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                                <h3 class="text-lg font-semibold">インストール済み Plugin (${server.installedPlugins.length})</h3>
+                                <button data-action="save-addons" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-lg text-sm transition-colors duration-300">変更を保存</button>
+                            </div>
+                            <div class="p-4">
+                                ${renderServerAddons(server, 'plugin')}
+                            </div>
+                        `;
+                        setupDragAndDrop(server, 'plugin');
+                        break;
+
+                    case 'players':
+                        // カラム2: 参加者リスト
+                        contextArea.innerHTML = `
+                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                                <h3 class="text-gray-500 dark:text-gray-400 text-sm font-semibold mb-3">参加者 (${server.players.current}人)</h3>
+                                <div class="max-h-80 overflow-y-auto custom-scrollbar pr-2">
+                                    ${server.players.list.length > 0 ? server.players.list.map(p => `<p class="text-gray-700 dark:text-gray-300 py-1 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">${p}</p>`).join('') : '<p class="text-gray-500">現在参加者はいません</p>'}
+                                </div>
+                            </div>
+                        `;
+                        // カラム3: プレイヤー管理
+                        mainArea.innerHTML = `
+                            <div class="p-4"><h3 class="text-lg font-semibold">プレイヤー管理</h3><p class="mt-4 text-gray-500">（ここに Whitelist / OP / Banリスト の管理UIが入ります）</p></div>
+                        `;
+                        break;
+
+                    case 'danger':
+                        // カラム2: コントロール
+                        contextArea.innerHTML = `
+                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                                <h3 class="text-gray-500 dark:text-gray-400 text-sm font-semibold mb-2">コントロール</h3>
+                                <button data-action="restart-server" class="w-full mt-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 rounded-lg shadow-md transition duration-200">
+                                    サーバー再起動
+                                </button>
+                            </div>
+                        `;
+                        // カラム3: 危険ゾーン
+                        mainArea.innerHTML = `
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold text-red-500 dark:text-red-400">危険ゾーン</h3>
+                                <div class="mt-4 bg-red-100 dark:bg-red-900/50 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center">
+                                    <div><p class="font-bold text-gray-900 dark:text-red-200">サーバーの削除</p><p class="text-sm text-red-700 dark:text-gray-400">この操作は取り消せません。すべてのデータが削除されます。</p></div>
+                                    <button data-action="delete-server" class="mt-3 sm:mt-0 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">このサーバーを削除する</button>
+                                </div>
+                            </div>
+                        `;
+                        break;
+                }
+            };
+
+            // v5: 「基本」タブのサブタブ（ログ/設定）を更新 (v4と同じ)
+            const updateDetailBasicSubTab = (server) => {
+                const contentArea = document.getElementById('detail-basic-content');
+                if (!contentArea) return;
+
+                if (state.detailBasicActiveSubTab === 'log') {
+                    // ログとコンソール
+                    contentArea.innerHTML = `
+                        <div class="flex flex-col h-full">
+                            <div class="bg-gray-50 dark:bg-black p-3 rounded-md flex-1 overflow-y-auto custom-scrollbar">
+                                <pre id="server-log-output" class="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono">${server.logs.join('\n')}</pre>
+                            </div>
+                            <div class="mt-4 flex gap-2">
+                                <input type="text" id="command-input" placeholder="コマンドを入力..." class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white p-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:border-primary focus:ring-1 focus:ring-primary transition duration-150">
+                                <button id="send-command-btn" class="bg-primary hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200">
+                                    実行
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    const logOutputEl = contentArea.querySelector('#server-log-output');
+                    if(logOutputEl) logOutputEl.parentElement.scrollTop = logOutputEl.parentElement.scrollHeight;
+
+                    document.getElementById('send-command-btn').addEventListener('click', sendCommand);
+                    document.getElementById('command-input').addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') sendCommand();
+                    });
+
+                } else if (state.detailBasicActiveSubTab === 'props') {
+                    // Propertiesエディタ
+                    contentArea.innerHTML = `
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold">server.properties</h2>
+                            <button data-action="save-properties" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">変更を保存</button>
+                        </div>
+                        ${renderPropertiesEditor(server)}
+                    `;
+                }
+            };
+            
+            // v5: 詳細ビュー全体を更新
+            const updateDetailView = () => {
+                if (state.currentView !== 'detail') return;
+                renderServerDetail(); // UI骨組みとコンテンツの完全再描画
+            };
+
+            // v5: ビュー全体の切り替え関数
+            const updateView = () => {
+                serverListView.classList.toggle('hidden', state.currentView !== 'list');
+                physicalServerListView.classList.toggle('hidden', state.currentView !== 'physical');
+                serverDetailView.classList.toggle('hidden', state.currentView !== 'detail');
+
+                // サイドバーのアクティブ状態
+                navGameServers.classList.toggle('bg-primary', state.currentView === 'list' || state.currentView === 'detail');
+                navGameServers.classList.toggle('text-white', state.currentView === 'list' || state.currentView === 'detail');
+                navGameServers.classList.toggle('text-gray-600', state.currentView !== 'list' && state.currentView !== 'detail');
+                navGameServers.classList.toggle('dark:text-gray-300', state.currentView !== 'list' && state.currentView !== 'detail');
+                navPhysicalServers.classList.toggle('bg-primary', state.currentView === 'physical');
+                navPhysicalServers.classList.toggle('text-white', state.currentView === 'physical');
+                navPhysicalServers.classList.toggle('text-gray-600', state.currentView !== 'physical');
+                navPhysicalServers.classList.toggle('dark:text-gray-300', state.currentView !== 'physical');
+
+                if (state.currentView === 'list') {
+                    renderServerList();
+                } else if (state.currentView === 'detail') {
+                    renderServerDetail();
+                }
+            };
+
+            // --- 画面切り替え関数 ---
+            const showListView = () => { state.currentView = 'list'; state.selectedServerId = null; updateView(); };
+            const showDetailView = (serverId) => { state.currentView = 'detail'; state.selectedServerId = serverId; state.detailActiveTab = 'basic'; state.detailBasicActiveSubTab = 'log'; updateView(); };
+            const showPhysicalListView = () => { state.currentView = 'physical'; state.selectedServerId = null; updateView(); };
+            
+            // --- イベントハンドラ (v5で更新) ---
+            const toggleServerStatus = (serverId) => {
+                const server = state.servers.find(s => s.id === serverId);
+                if (server) {
+                    server.status = server.status === 'running' ? 'stopped' : 'running';
+                    if(server.status === 'stopped') { 
+                        server.tps = 0.0; server.players.current = 0; server.players.list = []; server.cpu = 0.0; server.memory = 0;
+                        logToDetailView(serverId, '[SYSTEM] サーバーが停止しました。', 'warning');
+                    } else { 
+                        server.tps = 18.0 + Math.random() * 2; 
+                        server.players.current = Math.floor(Math.random() * server.players.max); 
+                        server.players.list = server.players.recent.slice(0, server.players.current);
+                        server.cpu = 20.0 + Math.random() * 30;
+                        server.memory = (server.memoryMax * 0.3) + (Math.random() * server.memoryMax * 0.4);
+                        logToDetailView(serverId, '[SYSTEM] サーバーが起動しました。', 'info');
+                    }
+                    
+                    if (state.currentView === 'list') {
+                        renderServerList();
+                    } else if (state.currentView === 'detail' && state.selectedServerId === serverId) {
+                        updateDetailView(); // v5: 詳細ビュー全体を再描画してステータスカードを更新
+                    }
+                }
+            };
+            
+            const updateServerData = (serverId, field, value) => {
+                const server = state.servers.find(s => s.id === serverId);
+                if (server && (field === 'name' || field === 'memo')) {
+                    server[field] = value;
+                    if(state.currentView === 'list') {
+                        renderServerList();
+                    } else if (state.currentView === 'detail' && field === 'memo') {
+                        // v6: メモを編集した場合、プレビューにも反映させるためヘッダーを再描画
+                        updateDetailView();
+                    }
+                }
+            };
+            
+            const saveProperties = (serverId, button) => {
+                const server = state.servers.find(s => s.id === serverId);
+                if (!server) return;
+                const editor = document.getElementById('properties-editor');
+                Object.keys(server.properties).forEach(key => {
+                    const input = editor.querySelector(`#${key}`);
+                    if(input) {
+                        if (input.type === 'checkbox') server.properties[key] = input.checked;
+                        else if (input.type === 'number') server.properties[key] = parseFloat(input.value) || 0;
+                        else server.properties[key] = input.value;
+                    }
+                });
+                console.log('Saved properties for server:', serverId, server.properties);
+                button.textContent = '保存しました！';
+                logToDetailView(serverId, '[SYSTEM] server.properties を保存しました。', 'info');
+                setTimeout(() => { button.textContent = '変更を保存'; }, 2000);
+            };
+
+            // --- ログ & コマンド関数 (v5で更新) ---
+            const logToDetailView = (serverId, message, type = 'info') => {
+                const server = state.servers.find(s => s.id === serverId);
+                if (!server) return;
+                const timestamp = new Date().toLocaleTimeString('ja-JP', { hour12: false });
+                let prefix = '[INFO]';
+                if(type === 'warning') prefix = '[WARN]';
+                if(type === 'error') prefix = '[ERROR]';
+                if(type === 'command') prefix = '[USER]';
+                const fullLog = `[${timestamp}] ${prefix}: ${message}`;
+                server.logs.push(fullLog);
+                if (server.logs.length > 50) server.logs.shift();
+
+                // v5: ログタブが表示されている場合のみ更新
+                if (state.currentView === 'detail' && 
+                    state.selectedServerId === serverId &&
+                    state.detailActiveTab === 'basic' &&
+                    state.detailBasicActiveSubTab === 'log') {
+                    
+                    const logOutput = document.getElementById('server-log-output');
+                    if (logOutput) {
+                        logOutput.textContent = server.logs.join('\n');
+                        logOutput.parentElement.scrollTop = logOutput.parentElement.scrollHeight;
+                    }
+                }
+            };
+
+            const sendCommand = () => {
+                const input = document.getElementById('command-input');
+                const command = input.value.trim();
+                const serverId = state.selectedServerId;
+                const server = state.servers.find(s => s.id === serverId);
+                if (!command || !server) return;
+                if (server.status !== 'running') {
+                    logToDetailView(serverId, `コマンド実行失敗: サーバーが停止しています。`, 'error');
+                    return;
+                }
+                logToDetailView(serverId, `/${command}`, 'command');
+                input.value = '';
+                setTimeout(() => {
+                    if (command.toLowerCase().startsWith('say')) { logToDetailView(serverId, `[Server] ${command.substring(4).trim()}`); }
+                    else if (command.toLowerCase() === 'list') { logToDetailView(serverId, `There are ${server.players.current} of a max ${server.players.max} players online: ${server.players.list.join(', ')}`); }
+                    else if (command.toLowerCase() === 'stop') { logToDetailView(serverId, `Stopping the server...`); toggleServerStatus(serverId); }
+                    else { logToDetailView(serverId, `Unknown command: ${command}`, 'error'); }
+                }, 500);
+            };
+
+            // --- v5: D&D関連のロジック (Mod/Plugin分離対応) ---
+            let draggedAddon = null; // {id, type}
+
+            function setupDragAndDrop(server, type) { // type: 'mod' or 'plugin'
+                const libraryList = document.getElementById('addon-library-list');
+                const serverAddonList = document.getElementById('server-addon-list');
+                if (!libraryList || !serverAddonList) return;
+
+                // 1. ドラッグ元（ライブラリ）
+                libraryList.addEventListener('dragstart', (e) => {
+                    const target = e.target.closest('.addon-item');
+                    if (target) {
+                        draggedAddon = {
+                            id: target.dataset.addonId,
+                            type: target.dataset.addonType
+                        };
+                        target.classList.add('dragging');
+                        e.dataTransfer.effectAllowed = 'copy';
+                        e.dataTransfer.setData('text/plain', JSON.stringify(draggedAddon));
+                    }
+                });
+
+                libraryList.addEventListener('dragend', (e) => {
+                    if (draggedAddon) {
+                        const target = e.target.closest('.addon-item');
+                        if (target) target.classList.remove('dragging');
+                        draggedAddon = null;
+                    }
+                });
+
+                // 2. ドロップ先（サーバー側リスト）
+                serverAddonList.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if (draggedAddon && draggedAddon.type === type) { // 型が一致するか確認
+                        e.dataTransfer.dropEffect = 'copy';
+                        serverAddonList.classList.add('drop-target-highlight');
+                    } else {
+                        e.dataTransfer.dropEffect = 'none';
+                    }
+                });
+
+                serverAddonList.addEventListener('dragleave', () => {
+                    serverAddonList.classList.remove('drop-target-highlight');
+                });
+
+                serverAddonList.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    serverAddonList.classList.remove('drop-target-highlight');
+                    const addonData = JSON.parse(e.dataTransfer.getData('text/plain'));
+                    
+                    if (addonData.type !== type) return; // 念のため型を再確認
+
+                    const addonId = addonData.id;
+                    const sourceLibrary = (type === 'mod') ? modLibrary : pluginLibrary;
+                    const targetList = (type === 'mod') ? server.installedMods : server.installedPlugins;
+                    
+                    const isAlreadyAdded = targetList.find(m => m.id === addonId);
+                    if (isAlreadyAdded) {
+                        // alert() は使用しない
+                        console.warn(`この${type === 'mod' ? 'Mod' : 'Plugin'}は既に追加されています。`);
+                        return;
+                    }
+
+                    const addonToAdd = sourceLibrary.find(m => m.id === addonId);
+                    if (addonToAdd) {
+                        targetList.push({ ...addonToAdd, enabled: true });
+                        updateDetailViewContent(server); // UIを再描画
+                    }
+                });
+            }
+
+            // --- メインのイベントリスナー (v6で更新) ---
+            navGameServers.addEventListener('click', (e) => { e.preventDefault(); showListView(); });
+            navPhysicalServers.addEventListener('click', (e) => { e.preventDefault(); showPhysicalListView(); });
+
+            addServerBtn.addEventListener('click', () => {
+                const newId = state.servers.length > 0 ? Math.max(...state.servers.map(s => s.id)) + 1 : 1;
+                const defaultHostId = physicalServers.length > 0 ? physicalServers[0].id : null;
+                const newServer = {
+                    id: newId, hostId: defaultHostId, name: `新しいサーバー ${newId}`, status: 'stopped', memo: '',
+                    players: { current: 0, max: 20, list: [], recent: [] }, tps: 0.0, cpu: 0.0, memory: 0, memoryMax: 8192,
+                    logs: ['[00:00:00] [Server thread/INFO]: Server created.'],
+                    properties: { ...defaultServerProperties },
+                    installedMods: [], installedPlugins: [] // v5
+                };
+                state.servers.push(newServer);
+                showDetailView(newId);
+            });
+
+            // メインコンテンツエリアのイベント委任 (v6でメモ機能追加)
+            document.getElementById('app').addEventListener('click', (e) => {
+                const target = e.target;
+                const serverItem = target.closest('.server-item-container');
+                const serverId = serverItem ? parseInt(serverItem.dataset.serverId) : state.selectedServerId;
+                const server = state.servers.find(s => s.id === serverId);
+
+                // サーバー一覧画面
+                if (serverItem) {
+                    if (target.closest('[data-action="toggle-status"]')) { e.stopPropagation(); toggleServerStatus(serverId); return; }
+                    if (!target.closest('[contenteditable="true"]') && !target.closest('button')) { showDetailView(serverId); return; }
+                }
+
+                // 詳細画面
+                if (state.currentView === 'detail') {
+                    
+                    // v6: メモのドロップダウン切り替え
+                    const memoToggleBtn = e.target.closest('[data-action="toggle-memo-dropdown"]');
+                    if (memoToggleBtn) {
+                        e.stopPropagation(); // 他のクリックイベントを防ぐ
+                        const memoContent = document.getElementById('memo-dropdown-content');
+                        const memoBtnIcon = memoToggleBtn.querySelector('svg');
+                        if (memoContent) {
+                            memoContent.classList.toggle('hidden');
+                            memoBtnIcon.classList.toggle('rotate-180'); // アイコン回転
+                        }
+                        return;
+                    }
+
+                    // v6: 展開メモの外側をクリックしたら閉じる
+                    const memoContent = document.getElementById('memo-dropdown-content');
+                    if (memoContent && !memoContent.classList.contains('hidden') && !e.target.closest('#memo-dropdown-container')) {
+                        memoContent.classList.add('hidden');
+                        const memoBtnIcon = document.getElementById('memo-toggle-btn')?.querySelector('svg');
+                        if(memoBtnIcon) memoBtnIcon.classList.remove('rotate-180');
+                    }
+
+                    if (target.closest('[data-action="toggle-status"]')) { toggleServerStatus(serverId); return; }
+                    if (target.closest('[data-action="open-dir"]')) { console.log('フォルダを開く (UIデモ)'); }
+                    if (target.closest('[data-action="delete-server"]')) {
+                        state.serverToDeleteId = serverId;
+                        deletingServerNameSpan.textContent = server.name;
+                        deleteModal.classList.remove('hidden');
+                    }
+                    if (target.closest('[data-action="save-properties"]')) {
+                        saveProperties(serverId, target.closest('button'));
+                    }
+                    if (target.closest('[data-action="restart-server"]')) {
+                        if (server.status === 'running') {
+                            logToDetailView(serverId, 'サーバーを再起動しています...', 'warning');
+                            toggleServerStatus(serverId); // 停止
+                            setTimeout(() => toggleServerStatus(serverId), 2000); // 起動
+                        } else {
+                            logToDetailView(serverId, 'サーバーが停止中のため、再起動できません。', 'error');
+                        }
+                    }
+                    // v5: 「基本」タブのサブタブ切り替え
+                    if (target.closest('.detail-subtab-btn')) {
+                        state.detailBasicActiveSubTab = target.closest('.detail-subtab-btn').dataset.subtab;
+                        updateDetailBasicSubTab(server);
+                        // スタイル更新
+                        serverDetailView.querySelectorAll('.detail-subtab-btn').forEach(btn => {
+                            btn.classList.toggle('text-primary', btn.dataset.subtab === state.detailBasicActiveSubTab);
+                            btn.classList.toggle('border-primary', btn.dataset.subtab === state.detailBasicActiveSubTab);
+                            btn.classList.toggle('text-gray-500', btn.dataset.subtab !== state.detailBasicActiveSubTab);
+                        });
+                    }
+                    // v5: Mod/Plugin 削除
+                    if (target.closest('[data-action="remove-addon"]')) {
+                        const addonElement = target.closest('.server-addon-item');
+                        const addonIdToRemove = addonElement.dataset.installedId;
+                        const addonType = addonElement.dataset.addonType;
+                        if (addonType === 'mod') {
+                            server.installedMods = server.installedMods.filter(m => m.id !== addonIdToRemove);
+                        } else {
+                            server.installedPlugins = server.installedPlugins.filter(p => p.id !== addonIdToRemove);
+                        }
+                        updateDetailViewContent(server);
+                    }
+                }
+            });
+            
+            // v5: Mod/Plugin 有効/無効トグル
+            document.getElementById('app').addEventListener('change', (e) => {
+                if (e.target.classList.contains('toggle-addon-enabled')) {
+                    const server = state.servers.find(s => s.id === state.selectedServerId);
+                    const addonElement = e.target.closest('.server-addon-item');
+                    const addonIdToToggle = addonElement.dataset.installedId;
+                    const addonType = addonElement.dataset.addonType;
+                    
+                    const targetList = (addonType === 'mod') ? server.installedMods : server.installedPlugins;
+                    const addon = targetList.find(m => m.id === addonIdToToggle);
+                    
+                    if(addon) addon.enabled = e.target.checked;
+                    console.log('Addon toggled:', addonType, addonIdToToggle, addon.enabled);
+                }
+            });
+            
+            // 編集可能なフィールド
+            document.getElementById('app').addEventListener('focusout', (e) => {
+                if (e.target.matches('.editable[contenteditable="true"]')) {
+                    // v6: メモ編集時は selectedServerId を参照
+                    const serverId = e.target.closest('[data-server-id]') ? parseInt(e.target.closest('[data-server-id]').dataset.serverId) : state.selectedServerId;
+                    updateServerData(serverId, e.target.dataset.field, e.target.innerText);
+                }
+            });
+
+            // 削除モーダル
+            confirmDeleteBtn.addEventListener('click', () => {
+                if (state.serverToDeleteId !== null) {
+                    state.servers = state.servers.filter(s => s.id !== state.serverToDeleteId);
+                    deleteModal.classList.add('hidden');
+                    showListView();
+                }
+            });
+            cancelDeleteBtn.addEventListener('click', () => { deleteModal.classList.add('hidden'); });
+            
+            // --- ダークモード (v4と同じ) ---
+            function toggleDarkMode() {
+                const htmlEl = document.documentElement;
+                const isDark = htmlEl.classList.contains('dark');
+                if (isDark) {
+                    htmlEl.classList.remove('dark'); htmlEl.classList.add('light');
+                    localStorage.setItem('theme', 'light');
+                    sunIcon.classList.remove('hidden'); moonIcon.classList.add('hidden');
+                } else {
+                    htmlEl.classList.remove('light'); htmlEl.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                    sunIcon.classList.add('hidden'); moonIcon.classList.remove('hidden');
+                }
+            }
+            darkModeToggle.addEventListener('click', toggleDarkMode);
+            const savedTheme = localStorage.getItem('theme');
+            const htmlEl = document.documentElement;
+            if (savedTheme === 'light') {
+                htmlEl.classList.remove('dark'); htmlEl.classList.add('light');
+                sunIcon.classList.remove('hidden'); moonIcon.classList.add('hidden');
+            } else {
+                htmlEl.classList.remove('light'); htmlEl.classList.add('dark');
+                sunIcon.classList.add('hidden'); moonIcon.classList.remove('hidden');
+            }
+
+            // --- 初期化 ---
+            updateView();
+        });
+    </script>
+</body>
+</html>
