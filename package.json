@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm:dev:manager\" \"npm:dev:agent\"",
-    "dev:manager": "npm run dev -w manager",
+    "dev:manager": "npm run dev -w manager -- --disable-gpu",
     "dev:agent": "npm run dev -w agent",
     "build": "npm run build -ws"
   },

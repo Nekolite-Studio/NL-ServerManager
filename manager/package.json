@@ -9,7 +9,7 @@
     "build": "electron-builder --linux"
   },
   "devDependencies": {
-    "electron": "^39.1.2",
+    "electron": "^31.0.0",
     "electron-builder": "^24.13.3",
     "ws": "^8.17.0"
   },

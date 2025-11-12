@@ -7,5 +7,7 @@
     "start": "node index.js",
     "dev": "node index.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
 }

@@ -2,14 +2,14 @@ const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 
+let mainWindow;
+
 function createWindow () {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: false,
-      nodeIntegration: true
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -21,37 +21,47 @@ app.whenReady().then(() => {
 
   const wss = new WebSocket.Server({ port: 8080 });
 
-  function heartbeat() {
-    this.isAlive = true;
-  }
-
   wss.on('connection', ws => {
-    ws.isAlive = true;
-    ws.on('pong', heartbeat);
     console.log('Client connected');
+    // Hardcode the IP for now, as per the plan
+    const clientIp = '192.168.1.10'; 
+
+    const pingInterval = setInterval(() => {
+      // Send a ping with the current timestamp
+      ws.ping(Date.now().toString());
+    }, 5000);
+
+    ws.on('pong', (payload) => {
+      const startTime = parseInt(payload.toString(), 10);
+      const latency = Date.now() - startTime;
+      console.log(`Pong received from ${clientIp}. Latency: ${latency}ms`);
+      // Send latency to the renderer process
+      if (mainWindow) {
+        mainWindow.webContents.send('update-ping', { ip: clientIp, latency });
+      }
+    });
+
     ws.on('message', message => {
       console.log(`Received message => ${message}`);
+      // Echo message back to all clients
       wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
           client.send(message);
         }
       });
     });
-    ws.send('Hello! You are connected to the WebSocket server.');
-  });
 
-  const interval = setInterval(function ping() {
-    wss.clients.forEach(function each(ws) {
-      if (ws.isAlive === false) return ws.terminate();
-
-      ws.isAlive = false;
-      ws.ping();
-      ws.send(JSON.stringify({ type: 'ping', timestamp: new Date().toLocaleTimeString() }));
+    ws.on('close', () => {
+      console.log('Client disconnected');
+      clearInterval(pingInterval); // Stop pinging this client
     });
-  }, 5000);
 
-  wss.on('close', function close() {
-    clearInterval(interval);
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      clearInterval(pingInterval);
+    });
+
+    ws.send('Hello! You are connected to the WebSocket server.');
   });
 
   console.log('WebSocket server started on port 8080');
