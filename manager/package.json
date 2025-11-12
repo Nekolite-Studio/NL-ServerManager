@@ -5,12 +5,12 @@
   "main": "main.js",
   "scripts": {
     "start": "npm run build && electron .",
-    "dev": "electron . --no-sandbox",
+    "dev": "electron . --no-sandbox --disable-gpu --disable-dev-shm-usage",
     "build": "electron-builder --linux"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^39.1.2",
+    "electron-builder": "^26.1.0",
     "ws": "^8.17.0"
   },
   "build": {

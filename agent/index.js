@@ -11,7 +11,15 @@ function connect() {
   });
 
   ws.on('message', function message(data) {
-    console.log('received: %s', data);
+    try {
+      const messageString = data.toString();
+      // Attempt to parse the message as JSON
+      const jsonData = JSON.parse(messageString);
+      console.log('Received JSON message:', jsonData);
+    } catch (error) {
+      // If it's not valid JSON, log it as a plain string
+      console.log('received: %s', data);
+    }
   });
 
   ws.on('close', function close() {
