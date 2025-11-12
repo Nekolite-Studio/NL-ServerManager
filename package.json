@@ -7,8 +7,8 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm:dev:manager\" \"npm:dev:agent\"",
-    "dev:manager": "npm run dev -w manager --inspect=9220",
-    "dev:agent": "npm run dev -w agent --inspect=9221",
+    "dev:manager": "npm run dev -w manager",
+    "dev:agent": "npm run dev -w agent",
     "build": "npm run build -ws"
   },
   "devDependencies": {

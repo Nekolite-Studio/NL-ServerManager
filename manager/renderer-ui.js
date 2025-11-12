@@ -4,7 +4,7 @@
 
 // --- DOM要素 (グローバルアクセス用) ---
 // メインの renderer.js の DOMContentLoaded 内で代入されます
-let serverListView, physicalServerListView, serverDetailView, serverListContainer;
+let serverListView, physicalServerListView, serverDetailView, physicalServerDetailView, serverListContainer;
 let navGameServers, navPhysicalServers;
 
 // D&D状態管理
@@ -15,9 +15,18 @@ let draggedAddon = null; // {id, type}
 const renderServerList = () => {
     if (!serverListContainer) return;
     serverListContainer.innerHTML = '';
+    // This needs to be updated to get host from the new state.physicalServers
+    const getHost = (hostId) => {
+        // Temporary mock
+        for (const [id, pserv] of state.physicalServers.entries()) {
+            if (id === hostId) return pserv; // This comparison is wrong, hostId is a number, id is a UUID
+        }
+        return { config: { alias: '未割り当て', ip: '' } };
+    };
+
     state.servers.forEach(server => {
         const tpsColor = getTpsColor(server.tps);
-        const host = physicalServers.find(p => p.id === server.hostId);
+        const host = getHost(server.hostId);
         const serverElement = document.createElement('div');
         serverElement.className = 'server-item-container bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-primary dark:hover:ring-primary';
         serverElement.dataset.serverId = server.id;
@@ -31,8 +40,8 @@ const renderServerList = () => {
                 <!-- ホストマシン -->
                 <div class="col-span-full md:col-span-1 overflow-hidden">
                     <span class="md:hidden text-xs text-gray-500 dark:text-gray-400 mb-1">ホストマシン</span>
-                    <div class="text-sm text-gray-600 dark:text-gray-300 truncate">${host ? host.name : '未割り当て'}</div>
-                    <div class="text-xs text-gray-400 truncate">${host ? host.ip : ''}</div>
+                    <div class="text-sm text-gray-600 dark:text-gray-300 truncate">${host.config.alias}</div>
+                    <div class="text-xs text-gray-400 truncate">${host.config.ip}</div>
                 </div>
                 <!-- ログ -->
                 <div class="col-span-full md:col-span-1">
@@ -465,91 +474,251 @@ const updateDetailView = () => {
     renderServerDetail(); // UI骨組みとコンテンツの完全再描画
 };
 
-// 物理サーバー一覧を描画する関数 (Ping更新とは別)
+// --- NEW: Physical Server List & Detail ---
+
 const renderPhysicalServerList = () => {
     const container = document.getElementById('physical-server-list');
     if (!container) return;
     
     container.innerHTML = ''; // コンテナをクリア
     
-    physicalServers.forEach(pserv => {
-        const el = document.createElement('div');
-        el.id = `server-${pserv.ip}`; // IPをIDとして使用
-        el.className = "bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-center";
-        
-        let statusHtml = '';
-        let pingHtml = 'N/A';
+    if (state.physicalServers.size === 0) {
+        container.innerHTML = '<p class="text-center text-gray-500 dark:text-gray-400 mt-10">利用可能なエージェントがありません。</p>';
+        return;
+    }
 
-        if (pserv.status === 'connected') {
-            statusHtml = `
-                <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
-                    <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-                    接続中
-                </span>
-            `;
-            pingHtml = pserv.latency ? `${pserv.latency} ms` : '計測中...';
-        } else {
-            // ステータスが 'disconnected' または 'connecting' など
-            const bgColor = pserv.status === 'disconnected' ? 'red' : 'yellow';
-            const statusText = pserv.status === 'disconnected' ? '切断' : '接続待機中...';
-            statusHtml = `
-                <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-${bgColor}-100 dark:bg-${bgColor}-900 text-${bgColor}-800 dark:text-${bgColor}-200">
-                    <span class="w-2 h-2 bg-${bgColor}-500 rounded-full"></span>
-                    ${statusText}
-                </span>
-            `;
-        }
+    state.physicalServers.forEach(pserv => {
+        const el = document.createElement('div');
+        el.className = "physical-server-item bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-5 gap-4 items-center cursor-pointer hover:ring-2 hover:ring-primary transition-all";
+        el.dataset.agentId = pserv.id;
+
+        const statusClasses = getAgentStatusClasses(pserv.status);
+        const metrics = pserv.metrics || {};
+        const cpu = metrics.cpuUsage || 0;
+        const ram = metrics.ramUsage || 0;
 
         el.innerHTML = `
-            <div>
-                <div class="font-bold text-lg text-gray-900 dark:text-white">${pserv.name}</div>
-                <div class="text-sm text-gray-500 dark:text-gray-400">${pserv.ip}</div>
-            </div>
-            <div id="status-${pserv.ip}">
-                ${statusHtml}
+            <div class="md:col-span-2">
+                <div class="font-bold text-lg text-gray-900 dark:text-white">${pserv.config.alias}</div>
+                <div class="text-sm text-gray-500 dark:text-gray-400 font-mono">${pserv.config.ip}:${pserv.config.port}</div>
             </div>
             <div>
-                <div class="text-sm">Ping: <span id="ping-${pserv.ip}" class="font-medium">${pingHtml}</span></div>
+                <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${statusClasses.bg} ${statusClasses.text}">
+                    <span class="w-2 h-2 ${statusClasses.dot} rounded-full"></span>
+                    ${pserv.status}
+                </span>
+            </div>
+            <div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">CPU</div>
+                <div class="font-semibold">${cpu}%</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">RAM</div>
+                <div class="font-semibold">${ram}%</div>
             </div>
         `;
         container.appendChild(el);
     });
 };
 
+const renderPhysicalServerDetail = () => {
+    const agent = state.physicalServers.get(state.selectedPhysicalServerId);
+    if (!agent || !physicalServerDetailView) return;
+
+    physicalServerDetailView.innerHTML = `
+        <!-- Header -->
+        <div>
+            <button id="back-to-physical-list-btn" class="text-primary hover:text-indigo-700 dark:hover:text-indigo-300 mb-4 inline-flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                物理サーバー一覧に戻る
+            </button>
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-3xl font-bold">${agent.config.alias}</h2>
+                    <p class="text-gray-500 dark:text-gray-400 font-mono">${agent.config.ip}:${agent.config.port}</p>
+                </div>
+                <!-- Add buttons here if needed -->
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="border-b border-gray-200 dark:border-gray-700 mt-6">
+            <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                <button data-tab="status" class="physical-detail-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${state.physicalServerDetailActiveTab === 'status' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}">
+                    ステータス
+                </button>
+                <button data-tab="settings" class="physical-detail-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${state.physicalServerDetailActiveTab === 'settings' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}">
+                    設定
+                </button>
+                <button data-tab="logs" class="physical-detail-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${state.physicalServerDetailActiveTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}">
+                    システムログ
+                </button>
+            </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="physical-detail-content" class="mt-6">
+            <!-- Content is rendered by updatePhysicalServerDetailContent -->
+        </div>
+    `;
+    updatePhysicalServerDetailContent();
+};
+
+const updatePhysicalServerDetailContent = () => {
+    const container = document.getElementById('physical-detail-content');
+    const agent = state.physicalServers.get(state.selectedPhysicalServerId);
+    if (!container || !agent) return;
+
+    const metrics = agent.metrics || {};
+    const systemInfo = agent.systemInfo || {};
+    const gameServers = metrics.gameServers || {};
+
+    switch (state.physicalServerDetailActiveTab) {
+        case 'status':
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Status Card -->
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">接続状態</div>
+                        <div class="text-2xl font-bold ${getAgentStatusClasses(agent.status).text} mt-1">${agent.status}</div>
+                    </div>
+                    <!-- CPU Card -->
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU 使用率</div>
+                        <div class="text-4xl font-extrabold ${getCpuColor(metrics.cpuUsage || 0)} mt-1">${metrics.cpuUsage || 'N/A'}<span class="text-lg">%</span></div>
+                    </div>
+                    <!-- RAM Card -->
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">RAM 使用率</div>
+                        <div class="text-4xl font-extrabold ${getMemoryColor((metrics.ramUsage || 0), 100)} mt-1">${metrics.ramUsage || 'N/A'}<span class="text-lg">%</span></div>
+                    </div>
+                     <!-- Disk Card -->
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Disk 使用率</div>
+                        <div class="text-4xl font-extrabold ${getMemoryColor((metrics.diskUsage || 0), 100)} mt-1">${metrics.diskUsage || 'N/A'}<span class="text-lg">%</span></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+                    <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-semibold mb-4">システム情報</h3>
+                        <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">OS</dt><dd class="font-mono">${systemInfo.os || 'N/A'}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU</dt><dd class="font-mono">${systemInfo.cpu || 'N/A'}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total RAM</dt><dd class="font-mono">${systemInfo.totalRam || 'N/A'}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Network</dt><dd class="font-mono">${metrics.networkSpeed || 'N/A'} Mbps</dd>
+                        </dl>
+                    </div>
+                    <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-semibold mb-4">ゲームサーバー</h3>
+                        <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">実行中</dt><dd class="font-bold text-green-500">${gameServers.running || 0}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">停止中</dt><dd class="font-bold text-red-500">${gameServers.stopped || 0}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">合計プレイヤー</dt><dd class="font-bold">${gameServers.totalPlayers || 0}</dd>
+                        </dl>
+                    </div>
+                </div>
+            `;
+            break;
+        case 'settings':
+            const isConnected = agent.status === 'Connected';
+            container.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Left Column: Settings Form -->
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-semibold mb-6">エージェント設定</h3>
+                        <fieldset id="agent-settings-form" ${!isConnected ? 'disabled' : ''}>
+                            <div class="space-y-6">
+                                <div>
+                                    <label for="agent-alias" class="block text-sm font-medium text-gray-700 dark:text-gray-300">エイリアス</label>
+                                    <input type="text" id="agent-alias" value="${agent.config.alias}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 disabled:opacity-50">
+                                </div>
+                                <div>
+                                    <label for="agent-ip" class="block text-sm font-medium text-gray-700 dark:text-gray-300">IPアドレス</label>
+                                    <input type="text" id="agent-ip" value="${agent.config.ip}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 disabled:opacity-50">
+                                </div>
+                                <div>
+                                    <label for="agent-port" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ポート</label>
+                                    <input type="number" id="agent-port" value="${agent.config.port}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 disabled:opacity-50">
+                                </div>
+                                 <div>
+                                    <label for="agent-path" class="block text-sm font-medium text-gray-700 dark:text-gray-300">サーバーディレクトリ</label>
+                                    <input type="text" id="agent-path" value="${agent.config.path || ''}" placeholder="/path/to/servers" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 disabled:opacity-50">
+                                </div>
+                            </div>
+                            <div class="mt-8 text-right">
+                                <button data-action="save-agent-settings" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                                    設定を保存
+                                </button>
+                            </div>
+                        </fieldset>
+                        ${!isConnected ? '<p class="mt-4 text-sm text-yellow-600 dark:text-yellow-400">設定を変更するには、エージェントが接続されている必要があります。</p>' : ''}
+                    </div>
+                    <!-- Right Column: Danger Zone -->
+                    <div class="bg-red-50 dark:bg-red-900/20 p-6 rounded-xl border border-red-200 dark:border-red-500/30">
+                         <h3 class="text-lg font-semibold text-red-700 dark:text-red-300">危険ゾーン</h3>
+                         <p class="mt-2 text-sm text-red-600 dark:text-red-400">以下の操作は元に戻すことができません。十分に注意してください。</p>
+                         <div class="mt-6">
+                            <button data-action="delete-agent" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                                このエージェントを削除
+                            </button>
+                            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">これにより、Managerの管理リストからこのエージェントが削除されます。エージェント自体やサーバーファイルは削除されません。</p>
+                         </div>
+                    </div>
+                </div>
+            `;
+            break;
+        case 'logs':
+            container.innerHTML = `
+                <div class="bg-gray-900 dark:bg-black text-white font-mono text-xs rounded-lg shadow-lg" style="height: 60vh;">
+                    <div class="p-4 overflow-y-auto custom-scrollbar h-full">
+                        <pre>${(agent.logs || ['No logs yet.']).join('\n')}</pre>
+                    </div>
+                </div>
+            `;
+            // Scroll to bottom
+            const logContainer = container.querySelector('.custom-scrollbar');
+            if (logContainer) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+            break;
+    }
+};
+
 
 // v5: ビュー全体の切り替え関数
 const updateView = () => {
-    if (!serverListView || !physicalServerListView || !serverDetailView) {
+    if (!serverListView || !physicalServerListView || !serverDetailView || !physicalServerDetailView) {
         console.error("DOM要素が初期化されていません。");
         return;
     }
 
-    // (1) 'list' 以外は serverListView を非表示にする
     serverListView.classList.toggle('hidden', state.currentView !== 'list');
-    
-    // (2) 'physical' 以外は physicalServerListView を非表示にする
     physicalServerListView.classList.toggle('hidden', state.currentView !== 'physical');
-    
-    // (3) 'detail' 以外は serverDetailView を非表示にする
     serverDetailView.classList.toggle('hidden', state.currentView !== 'detail');
+    physicalServerDetailView.classList.toggle('hidden', state.currentView !== 'physical-detail');
 
     // サイドバーのアクティブ状態
-    navGameServers.classList.toggle('bg-primary', state.currentView === 'list' || state.currentView === 'detail');
-    navGameServers.classList.toggle('text-white', state.currentView === 'list' || state.currentView === 'detail');
-    navGameServers.classList.toggle('text-gray-600', state.currentView !== 'list' && state.currentView !== 'detail');
-    navGameServers.classList.toggle('dark:text-gray-300', state.currentView !== 'list' && state.currentView !== 'detail');
-    navPhysicalServers.classList.toggle('bg-primary', state.currentView === 'physical');
-    navPhysicalServers.classList.toggle('text-white', state.currentView === 'physical');
-    navPhysicalServers.classList.toggle('text-gray-600', state.currentView !== 'physical');
-    navPhysicalServers.classList.toggle('dark:text-gray-300', state.currentView !== 'physical');
+    const isGameView = state.currentView === 'list' || state.currentView === 'detail';
+    const isPhysicalView = state.currentView === 'physical' || state.currentView === 'physical-detail';
+
+    navGameServers.classList.toggle('bg-primary', isGameView);
+    navGameServers.classList.toggle('text-white', isGameView);
+    navGameServers.classList.toggle('text-gray-600', !isGameView);
+    navGameServers.classList.toggle('dark:text-gray-300', !isGameView);
+    
+    navPhysicalServers.classList.toggle('bg-primary', isPhysicalView);
+    navPhysicalServers.classList.toggle('text-white', isPhysicalView);
+    navPhysicalServers.classList.toggle('text-gray-600', !isPhysicalView);
+    navPhysicalServers.classList.toggle('dark:text-gray-300', !isPhysicalView);
 
     if (state.currentView === 'list') {
         renderServerList();
     } else if (state.currentView === 'detail') {
         renderServerDetail();
     } else if (state.currentView === 'physical') {
-        // 物理サーバー一覧の描画 (ping更新で部分的に行われるが、初期描画も必要)
         renderPhysicalServerList();
+    } else if (state.currentView === 'physical-detail') {
+        renderPhysicalServerDetail();
     }
 };
 
