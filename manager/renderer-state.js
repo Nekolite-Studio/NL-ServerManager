@@ -6,16 +6,15 @@ const defaultServerProperties = {
 };
 
 const state = {
-    servers: [
-        // This is game server data, we leave it for now.
-        // We need to figure out how to link hostId to the new physical server IDs (UUIDs).
-        { id: 1, hostId: 1, name: 'バニラサバイバル', status: 'stopped', memo: '友人とのんびり遊ぶためのサーバーです。\nMODは入れていません。\n\nこれは3行目です。\nこれは4行目です。', players: { current: 0, max: 32, list: [], recent: ['Player1', 'Player2', 'Steve'] }, tps: 0.0, cpu: 0.0, memory: 0, memoryMax: 8192, logs: ['[12:34:56] [Server thread/INFO]: Player1 joined the game', '[12:34:58] [Server thread/INFO]: Player2 joined the game', '[12:35:01] [INFO]: Steve fell from a high place', '[12:35:15] [INFO]: Player1 reached advancement [Stone Age]', '[12:35:20] [INFO]: Player2 reached advancement [Getting an Upgrade]'], properties: { ...defaultServerProperties }, installedMods: [], installedPlugins: [{ id: 'plugin1', name: 'WorldEdit-Bukkit-7.2.10.jar', size: '2.8MB', enabled: true }] },
-        { id: 2, hostId: 1, name: 'MODてんこ盛りサーバー (Fabric)', status: 'stopped', memo: '工業、魔術、建築など、様々なMODを導入しています。\nメモリ割り当ては多めに設定してください。\n\nこれは3行目です。\nこれは4行目です。\nこれは5行目です。\nこれは6行目です。\nこれは7行目です。\nこれは8行目です。\nこれは9行目です。', players: { current: 0, max: 20, list: [], recent: ['TechnoMage', 'BuilderPro', 'MagicGirl'] }, tps: 0.0, cpu: 0.0, memory: 0, memoryMax: 16384, logs: ['[20:10:05] [Server thread/INFO]: Stopping server', '[20:10:04] [Server thread/INFO]: Saving chunks', '[20:10:02] [INFO]: TechnoMage left the game'], properties: { ...defaultServerProperties, 'gamemode': 'creative', 'difficulty': 'normal', 'allow-flight': true }, installedMods: [{ id: 'mod2', name: 'journeymap-1.19.2-5.9.0-fabric.jar', size: '3.5MB', enabled: true }, { id: 'mod3', name: 'jei-1.19.2-fabric-11.5.0.298.jar', size: '980KB', enabled: false }], installedPlugins: [] },
-        { id: 3, hostId: 2, name: 'クリエイティブ建築ワールド (Paper)', status: 'stopped', memo: '巨大建築プロジェクト進行中！\n誰でも参加OKです。', players: { current: 0, max: 50, list: [], recent: ['Architector', 'PixelArtist', 'Redstoner'] }, tps: 0.0, cpu: 0.0, memory: 0, memoryMax: 8192, logs: ['[18:00:11] [Server thread/INFO]: Architector joined the game', '[18:00:25] [Server thread/INFO]: PixelArtist joined the game', '[18:01:00] [INFO]: Weather set to clear'], properties: { ...defaultServerProperties, 'gamemode': 'creative', 'pvp': false, 'spawn-monsters': false }, installedMods: [], installedPlugins: [] },
-    ],
     physicalServers: new Map(), // Will be populated from main process
-    currentView: 'physical', // 'list', 'detail', 'physical', 'physical-detail'
-    selectedServerId: null, 
+    agentServers: new Map(), // key: agentId, value: [server1, server2, ...]
+
+    get servers() {
+        return Array.from(this.agentServers.values()).flat();
+    },
+
+    currentView: 'list', // 'list', 'detail', 'physical', 'physical-detail'
+    selectedServerId: null,
     selectedPhysicalServerId: null,
     serverToDeleteId: null,
     physicalServerToDeleteId: null,

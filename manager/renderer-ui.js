@@ -2,6 +2,57 @@
 // UIの描画と更新を担当する関数群
 // このファイルは renderer-state.js の後に読み込まれる必要があります。
 
+// --- NEW: Notification System ---
+window.showNotification = (message, type = 'info') => {
+    const container = document.getElementById('notification-container');
+    if (!container) return;
+
+    const notifId = `notif-${Date.now()}`;
+    const notif = document.createElement('div');
+    notif.id = notifId;
+    
+    const baseClasses = 'w-full max-w-xs p-4 text-white rounded-lg shadow-lg flex items-center gap-3';
+    let typeClasses = '';
+    let icon = '';
+
+    switch(type) {
+        case 'success':
+            typeClasses = 'bg-green-500 dark:bg-green-600';
+            icon = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+            break;
+        case 'error':
+            typeClasses = 'bg-red-500 dark:bg-red-600';
+            icon = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+            break;
+        default: // info
+            typeClasses = 'bg-blue-500 dark:bg-blue-600';
+            icon = '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+            break;
+    }
+
+    notif.className = `${baseClasses} ${typeClasses}`;
+    notif.innerHTML = `
+        <div class="flex-shrink-0">${icon}</div>
+        <p class="flex-1">${message}</p>
+        <button data-dismiss-target="${notifId}" class="p-1 rounded-md hover:bg-black/20">
+             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+    `;
+    
+    container.appendChild(notif);
+
+    const removeNotif = () => {
+        notif.classList.add('animate-pulse', 'opacity-0', 'transition-opacity', 'duration-500');
+        setTimeout(() => notif.remove(), 500);
+    };
+
+    const timeoutId = setTimeout(removeNotif, 5000);
+
+    notif.querySelector(`[data-dismiss-target]`).addEventListener('click', () => {
+        clearTimeout(timeoutId);
+        removeNotif();
+    });
+};
 // --- DOM要素 (グローバルアクセス用) ---
 // メインの renderer.js の DOMContentLoaded 内で代入されます
 let serverListView, physicalServerListView, serverDetailView, physicalServerDetailView, serverListContainer;
@@ -15,27 +66,27 @@ let draggedAddon = null; // {id, type}
 const renderServerList = () => {
     if (!serverListContainer) return;
     serverListContainer.innerHTML = '';
-    // This needs to be updated to get host from the new state.physicalServers
-    const getHost = (hostId) => {
-        // Temporary mock
-        for (const [id, pserv] of state.physicalServers.entries()) {
-            if (id === hostId) return pserv; // This comparison is wrong, hostId is a number, id is a UUID
-        }
-        return { config: { alias: '未割り当て', ip: '' } };
-    };
+    
+    const servers = state.servers;
 
-    state.servers.forEach(server => {
+    if (servers.length === 0) {
+        serverListContainer.innerHTML = '<p class="text-center text-gray-500 dark:text-gray-400 mt-10">利用可能なゲームサーバーがありません。</p>';
+        return;
+    }
+
+    servers.forEach(server => {
         const tpsColor = getTpsColor(server.tps);
-        const host = getHost(server.hostId);
+        const host = state.physicalServers.get(server.hostId);
+
         const serverElement = document.createElement('div');
         serverElement.className = 'server-item-container bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-primary dark:hover:ring-primary';
-        serverElement.dataset.serverId = server.id;
+        serverElement.dataset.serverId = server.server_id;
         serverElement.innerHTML = `
-            <div class="grid md:grid-cols-[minmax(150px,_1.5fr)_minmax(130px,_1fr)_minmax(200px,_4fr)_minmax(120px,_1fr)_minmax(80px,_0.5fr)_minmax(60px,_0.5fr)] 2xl:grid-cols-[minmax(150px,_1.5fr)_minmax(130px,_1fr)_minmax(200px,_4fr)_minmax(180px,_1.5fr)_minmax(80px,_0.5fr)_minmax(60px,_0.5fr)_minmax(100px,_1fr)] gap-4 p-4 items-center">
+            <div class="grid md:grid-cols-[minmax(150px,_1.5fr)_minmax(130px,_1fr)_minmax(200px,_4fr)_minmax(120px,_1fr)_minmax(80px,_0.5fr)_minmax(60px,_0.5fr)] 2xl:grid-cols-[minmax(150px,_1.5fr)_minmax(130px,_1fr)_minmax(200px,_4fr)_minmax(180px,_1.5fr)_minmax(80px,_0.5fr)_minmax(60px,_0.f_fr)_minmax(100px,_1fr)] gap-4 p-4 items-center">
                 <!-- サーバー名 -->
                 <div class="flex flex-col col-span-full md:col-span-1 overflow-hidden">
                     <span class="md:hidden text-xs text-gray-500 dark:text-gray-400">サーバー名</span>
-                    <div contenteditable="true" data-field="name" class="font-bold text-lg text-gray-900 dark:text-white truncate editable" placeholder="サーバー名を入力">${server.name}</div>
+                    <div contenteditable="true" data-field="name" class="font-bold text-lg text-gray-900 dark:text-white truncate editable" placeholder="サーバー名を入力">${server.server_name}</div>
                 </div>
                 <!-- ホストマシン -->
                 <div class="col-span-full md:col-span-1 overflow-hidden">
@@ -175,10 +226,10 @@ const renderServerAddons = (server, type) => {
 
 // --- v6: 詳細ビューのレンダリング (レイアウト大幅改修) ---
 const renderServerDetail = () => {
-    const server = state.servers.find(s => s.id === state.selectedServerId);
+    const server = state.servers.find(s => s.server_id === state.selectedServerId);
     if (!server || !serverDetailView) return;
     
-    const host = physicalServers.find(p => p.id === server.hostId);
+    const host = state.physicalServers.get(server.hostId);
     const statusClasses = getStatusClasses(server.status);
     const tpsColor = getTpsColor(server.tps);
     const cpuColor = getCpuColor(server.cpu);
@@ -203,9 +254,9 @@ const renderServerDetail = () => {
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <!-- サーバー名 -->
                 <div class="flex-grow min-w-0">
-                    <div contenteditable="true" data-field="name" class="text-3xl font-bold editable truncate" placeholder="サーバー名を入力">${server.name}</div>
+                    <div contenteditable="true" data-field="name" class="text-3xl font-bold editable truncate" placeholder="サーバー名を入力">${server.server_name}</div>
                     <div class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">
-                        ホスト: <span class="font-medium text-gray-700 dark:text-gray-300">${host ? host.name : '未割り当て'}</span> (${host ? host.ip : 'N/A'})
+                        ホスト: <span class="font-medium text-gray-700 dark:text-gray-300">${host ? host.config.alias : '未割り当て'}</span> (${host ? host.config.ip : 'N/A'})
                     </div>
                 </div>
 
@@ -310,7 +361,7 @@ const updateDetailViewContent = (server) => {
     const mainArea = document.getElementById('detail-main-area');
     if (!contextArea || !mainArea) return;
 
-    server = server || state.servers.find(s => s.id === state.selectedServerId);
+    server = server || state.servers.find(s => s.server_id === state.selectedServerId);
     if (!server) return;
 
     // 修正点 1: この switch 文が実行されれば、'basic' でも内容は描画されるはず

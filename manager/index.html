@@ -72,9 +72,15 @@
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 antialiased">
 
-    <div id="app" class="flex flex-col lg:flex-row min-h-screen">
+   <!-- ローディングオーバーレイ -->
+   <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-90 flex flex-col items-center justify-center z-50">
+       <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-primary"></div>
+       <p class="mt-4 text-lg font-semibold text-white">エージェントに接続中...</p>
+   </div>
 
-        <aside id="sidebar" class="bg-white dark:bg-gray-800 p-4 lg:w-64 lg:flex-shrink-0 shadow-lg lg:h-screen lg:sticky lg:top-0">
+   <div id="app" class="flex flex-col lg:flex-row min-h-screen" style="visibility: hidden;">
+
+       <aside id="sidebar" class="bg-white dark:bg-gray-800 p-4 lg:w-64 lg:flex-shrink-0 shadow-lg lg:h-screen lg:sticky lg:top-0">
             <h1 class="text-2xl font-bold text-primary mb-6 border-b border-gray-200 dark:border-gray-700 pb-3">
                 <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"></path></svg>
                 Server Manager
@@ -122,13 +128,6 @@
                         </button>
                     </div>
                 </header>
-                <!-- 
-                  修正点: 
-                  ヘッダーのグリッド定義を renderer-ui.js の renderServerList 関数内のグリッド定義と
-                  完全に一致させます。
-                  - md: 6カラム (ステータスボタンなし)
-                  - 2xl: 7カラム (ステータスボタンあり)
-                -->
                 <div class="hidden md:grid gap-4 px-4 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700
                             md:grid-cols-[minmax(150px,_1.5fr)_minmax(130px,_1fr)_minmax(200px,_4fr)_minmax(120px,_1fr)_minmax(80px,_0.5fr)_minmax(60px,_0.5fr)] 
                             2xl:grid-cols-[minmax(150px,_1.5fr)_minmax(130px,_1fr)_minmax(200px,_4fr)_minmax(180px,_1.5fr)_minmax(80px,_0.5fr)_minmax(60px,_0.5fr)_minmax(100px,_1fr)]
@@ -219,7 +218,32 @@
         </div>
     </div>
 
+    <!-- 通知コンテナ -->
+    <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-3 w-full max-w-xs">
+        <!-- 通知はここに動的に挿入されます -->
+    </div>
+
+    <!-- 新規サーバー作成モーダル -->
+    <div id="create-server-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">新規サーバー作成</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="host-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ホストマシン</label>
+                    <select id="host-select" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700">
+                        <!-- オプションは動的に挿入されます -->
+                    </select>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-4">
+                <button id="cancel-create-server-btn" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+                <button id="confirm-create-server-btn" type="button" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">作成</button>
+            </div>
+        </div>
+    </div>
+
     <script src="renderer-state.js"></script>
     <script src="renderer-ui.js"></script>
-    <script src="renderer.js"></script> </body>
+    <script src="renderer.js"></script>
+</body>
 </html>

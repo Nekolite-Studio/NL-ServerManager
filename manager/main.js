@@ -2,11 +2,12 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const { getAgents, setAgents, getWindowBounds, setWindowBounds } = require('./src/storeManager');
 
 // --- Agent Management ---
 
-// Using a Map to store agent connections and their state
-const agents = new Map();
+const agents = new Map(); // インメモリのAgent接続状態を管理
+let mainWindow;
 
 function sendToRenderer(channel, data) {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -18,8 +19,16 @@ function addLog(agentId, message) {
     sendToRenderer('agent-log-entry', { agentId, message: `[${new Date().toLocaleTimeString()}] ${message}` });
 }
 
-function createAgent(config) {
-    const id = uuidv4();
+// Agentリストを永続化するヘルパー関数
+function persistAgents() {
+    const agentList = Array.from(agents.values()).map(agent => ({
+        id: agent.id,
+        ...agent.config // configオブジェクトを展開してフラットな構造で保存
+    }));
+    setAgents(agentList);
+}
+
+function createAgent(id, config) {
     const agent = {
         id,
         config, // { ip, port, alias }
@@ -29,7 +38,6 @@ function createAgent(config) {
     };
     agents.set(id, agent);
     connectToAgent(id);
-    // Notify renderer of the new agent
     broadcastAgentList();
     return agent;
 }
@@ -46,11 +54,11 @@ function deleteAgent(id) {
         clearTimeout(agent.reconnectInterval);
     }
     if (agent.ws) {
-        // Remove listeners to prevent auto-reconnect on close
         agent.ws.removeAllListeners();
         agent.ws.close();
     }
     agents.delete(id);
+    persistAgents(); // 変更を永続化
     console.log(`Agent ${id} deleted.`);
     broadcastAgentList();
 }
@@ -59,15 +67,12 @@ function connectToAgent(id) {
     const agent = getAgent(id);
     if (!agent) return;
 
-    // Clear any existing reconnect timer
     if (agent.reconnectInterval) {
         clearTimeout(agent.reconnectInterval);
         agent.reconnectInterval = null;
     }
-    
-    // Prevent multiple connections
+
     if (agent.ws && (agent.ws.readyState === WebSocket.OPEN || agent.ws.readyState === WebSocket.CONNECTING)) {
-        console.log(`Already connected or connecting to agent ${agent.config.alias}`);
         return;
     }
 
@@ -81,24 +86,31 @@ function connectToAgent(id) {
         console.log(`Connected to agent: ${agent.config.alias}`);
         addLog(id, 'Connection established.');
         agent.status = 'Connected';
-        
         if (agent.reconnectInterval) {
             clearTimeout(agent.reconnectInterval);
             agent.reconnectInterval = null;
         }
-        
         broadcastAgentStatus(id);
-
-        // Request initial system info on connection
         ws.send(JSON.stringify({ type: 'getSystemInfo' }));
     });
 
     ws.on('message', (data) => {
         try {
             const parsedData = JSON.parse(data.toString());
-            // Don't log every metric update
             if (parsedData.type !== 'metricsData') {
                  console.log(`Data from ${agent.config.alias}:`, parsedData);
+            }
+            // Agentからのサーバーリスト更新を中継
+            if (parsedData.type === 'server_list_update') {
+               sendToRenderer('server_list_update', { agentId: id, servers: parsedData.payload });
+               console.log(`[Agent Op] Server list update received from agent ${agent.config.alias}.`);
+            } else if (parsedData.payload && parsedData.payload.path) {
+               // パス情報を含むイベントをログに出力
+               console.log(`[Agent Op] Type: ${parsedData.type}, Path: ${parsedData.payload.path}`);
+            }
+
+            if (parsedData.type === 'server_creation_failed') {
+               sendToRenderer('server_creation_failed', { agentId: id, error: parsedData.payload.error });
             }
             sendToRenderer('agent-data', { agentId: id, data: parsedData });
         } catch (error) {
@@ -113,8 +125,6 @@ function connectToAgent(id) {
         agent.status = 'Disconnected';
         agent.ws = null;
         broadcastAgentStatus(id);
-        
-        // Setup reconnection
         if (!agent.reconnectInterval) {
             agent.reconnectInterval = setTimeout(() => connectToAgent(id), 5000);
         }
@@ -123,7 +133,6 @@ function connectToAgent(id) {
     ws.on('error', (error) => {
         console.error(`WebSocket error for agent ${agent.config.alias}: ${error.message}`);
         addLog(id, `Connection error: ${error.message}`);
-        // The 'close' event will fire next, triggering the reconnect logic.
         ws.close();
     });
 }
@@ -148,29 +157,50 @@ function broadcastAgentList() {
     sendToRenderer('agent-list', agentList);
 }
 
-
 // --- Electron App Setup ---
 
-let mainWindow;
-
 function createWindow () {
+  const { width, height } = getWindowBounds();
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width,
+    height,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js')
     }
   });
 
+  // ウィンドウサイズが変更されたら保存する
+  mainWindow.on('resize', () => {
+    const { width, height } = mainWindow.getBounds();
+    setWindowBounds({ width, height });
+  });
+
   mainWindow.loadFile('index.html');
-  mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(() => {
   createWindow();
 
-  // For now, let's create one agent by default to connect to our local server
-  createAgent({ ip: '127.0.0.1', port: 8080, alias: 'Local Agent' });
+  // 保存されたAgentリストを読み込んで接続を開始
+  const storedAgents = getAgents();
+  if (storedAgents && storedAgents.length > 0) {
+      console.log(`Loading ${storedAgents.length} agent(s) from store.`);
+      storedAgents.forEach(agentData => {
+          // ストアから渡されるデータをコンソールに出力して確認
+          console.log('Data from store for createAgent:', agentData);
+          // ストアからはフラットな構造で読み込まれるため、メモリで扱うconfigオブジェクトに再構成する
+          const { id, ip, port, alias } = agentData;
+          createAgent(id, { ip, port, alias });
+      });
+  } else {
+      // 初回起動時など、保存されたAgentがない場合はローカルをデフォルトで追加
+      console.log('No stored agents found. Adding default local agent.');
+      const id = uuidv4();
+      createAgent(id, { ip: '127.0.0.1', port: 8080, alias: 'Local Agent' });
+      persistAgents();
+  }
+
 
   // --- IPC Handlers ---
 
@@ -178,9 +208,29 @@ app.whenReady().then(() => {
     broadcastAgentList();
   });
 
+  ipcMain.on('request-all-servers', (event) => {
+    console.log('Received request for all servers from renderer.');
+    for (const agent of agents.values()) {
+        if (agent.ws && agent.ws.readyState === WebSocket.OPEN) {
+            agent.ws.send(JSON.stringify({ type: 'getAllServers' }));
+        }
+    }
+  });
+
+  // --- 起動シーケンス ---
+  ipcMain.on('renderer-ready', () => {
+    console.log('Renderer is ready. Broadcasting agent list.');
+    // 1. まずAgent(物理サーバー)のリストをブロードキャストする
+    broadcastAgentList();
+    // 2. UIに初期ロードが完了したことを通知 (サーバーリスト要求はUI側が担当)
+    sendToRenderer('initial-load-complete');
+  });
+
   ipcMain.on('add-agent', (event, config) => {
     console.log('Received request to add agent:', config);
-    createAgent(config);
+    const id = uuidv4();
+    createAgent(id, config);
+    persistAgents();
   });
 
   ipcMain.on('update-agent-settings', (event, { agentId, config }) => {
@@ -188,9 +238,9 @@ app.whenReady().then(() => {
     if (agent) {
         console.log(`Updating agent ${agentId} with new config:`, config);
         agent.config = config;
-        // Disconnect and reconnect with new settings
+        persistAgents();
         if (agent.ws) {
-            agent.ws.close();
+            agent.ws.close(); // closeイベントで再接続がトリガーされる
         } else {
             connectToAgent(agentId);
         }
@@ -203,14 +253,28 @@ app.whenReady().then(() => {
     deleteAgent(agentId);
   });
 
-  ipcMain.on('request-agent-metrics', (event, { agentId }) => {
-    const agent = getAgent(agentId);
+  ipcMain.on('create-server', (event, { hostId }) => {
+    console.log(`Received request to create server on host ${hostId}`);
+    const agent = getAgent(hostId);
     if (agent && agent.ws && agent.ws.readyState === WebSocket.OPEN) {
-        agent.ws.send(JSON.stringify({ type: 'getMetrics' }));
+        agent.ws.send(JSON.stringify({
+            type: 'create_server',
+            payload: {} // serverIdを削除
+        }));
     } else {
-        // Don't log this, it can be noisy
-        // console.log(`Cannot get metrics: Agent ${agentId} is not connected.`);
+        console.log(`Cannot create server: Agent ${hostId} is not connected.`);
+        sendToRenderer('server_creation_failed', { agentId: hostId, error: 'Agent is not connected.' });
     }
+  });
+
+  // Agentにメッセージをプロキシする汎用ハンドラ
+  ipcMain.on('proxy-to-agent', (event, { agentId, message }) => {
+      const agent = getAgent(agentId);
+      if (agent && agent.ws && agent.ws.readyState === WebSocket.OPEN) {
+          agent.ws.send(JSON.stringify(message));
+      } else {
+          console.log(`Cannot proxy message: Agent ${agentId} is not connected.`);
+      }
   });
 
   app.on('activate', function () {

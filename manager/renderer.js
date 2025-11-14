@@ -31,6 +31,8 @@ function stopGlobalMetricsLoop() {
 document.addEventListener('DOMContentLoaded', () => {
             
     // --- DOM要素の取得 (グローバル変数への代入) ---
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const appContainer = document.getElementById('app');
     serverListView = document.getElementById('server-list-view');
     physicalServerListView = document.getElementById('physical-server-list-view');
     serverDetailView = document.getElementById('server-detail-view');
@@ -49,13 +51,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const darkModeToggle = document.getElementById('dark-mode-toggle');
     const sunIcon = document.getElementById('sun-icon');
     const moonIcon = document.getElementById('moon-icon');
+    const createServerModal = document.getElementById('create-server-modal');
+    const confirmCreateServerBtn = document.getElementById('confirm-create-server-btn');
+    const cancelCreateServerBtn = document.getElementById('cancel-create-server-btn');
 
     // --- 画面切り替え関数 ---
     const showListView = () => { 
         stopGlobalMetricsLoop();
-        state.currentView = 'list'; 
-        state.selectedServerId = null; 
-        updateView(); 
+        state.currentView = 'list';
+        state.selectedServerId = null;
+        window.electronAPI.requestAllServers(); // サーバーリストを要求する
+        updateView();
     };
     const showDetailView = (serverId) => { 
         stopGlobalMetricsLoop();
@@ -81,15 +87,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- イベントハンドラ (v5で更新) ---
     const toggleServerStatus = (serverId) => {
-        const server = state.servers.find(s => s.id === serverId);
+        const server = state.servers.find(s => s.server_id === serverId);
         if (server) {
             
             // Send JSON message to agent
             const action = server.status === 'running' ? 'stop' : 'start';
-            window.electronAPI.sendJsonMessage({
+            window.electronAPI.proxyToServer(server.hostId, {
                 type: 'server_control',
                 payload: {
-                    serverId: server.id,
+                    serverId: server.server_id,
                     action: action,
                 }
             });
@@ -115,9 +121,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     const updateServerData = (serverId, field, value) => {
-        const server = state.servers.find(s => s.id === serverId);
+        const server = state.servers.find(s => s.server_id === serverId);
         if (server && (field === 'name' || field === 'memo')) {
-            server[field] = value;
+            // This needs to be sent to the agent to be persisted
+            console.log(`Updating ${field} for server ${serverId} to ${value}`);
+            // server[field] = value;
             if(state.currentView === 'list') {
                 renderServerList();
             } else if (state.currentView === 'detail' && field === 'memo') {
@@ -127,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     const saveProperties = (serverId, button) => {
-        const server = state.servers.find(s => s.id === serverId);
+        const server = state.servers.find(s => s.server_id === serverId);
         if (!server) return;
         const editor = document.getElementById('properties-editor');
         const newProperties = {};
@@ -155,22 +163,30 @@ document.addEventListener('DOMContentLoaded', () => {
     navPhysicalServers.addEventListener('click', (e) => { e.preventDefault(); showPhysicalListView(); });
 
     addServerBtn.addEventListener('click', () => {
-        const newId = state.servers.length > 0 ? Math.max(...state.servers.map(s => s.id)) + 1 : 1;
-        const newServer = {
-            id: newId, hostId: null, name: `新しいサーバー ${newId}`, status: 'stopped', memo: '',
-            players: { current: 0, max: 20, list: [], recent: [] }, tps: 0.0, cpu: 0.0, memory: 0, memoryMax: 8192,
-            logs: ['[00:00:00] [Server thread/INFO]: Server created.'],
-            properties: { ...defaultServerProperties },
-            installedMods: [], installedPlugins: []
-        };
-        state.servers.push(newServer);
-        
-        window.electronAPI.sendJsonMessage({
-            type: 'create_server',
-            payload: { serverConfig: newServer }
-        });
+        const createServerModal = document.getElementById('create-server-modal');
+        const hostSelect = document.getElementById('host-select');
 
-        showDetailView(newId);
+        // ホスト選択のオプションをクリアして再生成
+        hostSelect.innerHTML = '';
+        const onlineAgents = Array.from(state.physicalServers.values()).filter(p => p.status === 'Connected');
+
+        if (onlineAgents.length === 0) {
+            hostSelect.innerHTML = '<option value="">利用可能なホストがありません</option>';
+            hostSelect.disabled = true;
+            document.getElementById('confirm-create-server-btn').disabled = true;
+        } else {
+            onlineAgents.forEach(agent => {
+                const option = document.createElement('option');
+                option.value = agent.id;
+                option.textContent = `${agent.config.alias} (${agent.config.ip})`;
+                hostSelect.appendChild(option);
+            });
+            hostSelect.disabled = false;
+            document.getElementById('confirm-create-server-btn').disabled = false;
+        }
+        
+
+        createServerModal.classList.remove('hidden');
     });
 
     addAgentBtn.addEventListener('click', () => {
@@ -180,6 +196,27 @@ document.addEventListener('DOMContentLoaded', () => {
             port: newPort,
             alias: `New Agent ${state.physicalServers.size + 1}`
         });
+    });
+
+    // --- 新規サーバー作成モーダル ---
+    cancelCreateServerBtn.addEventListener('click', () => {
+        createServerModal.classList.add('hidden');
+    });
+
+    confirmCreateServerBtn.addEventListener('click', () => {
+        const hostId = document.getElementById('host-select').value;
+
+        if (!hostId) {
+            showNotification('ホストマシンが選択されていません。', 'error');
+            return;
+        }
+
+        // mainプロセスにサーバー作成を要求 (serverIdは削除)
+        window.electronAPI.createServer({ hostId });
+
+        // mainからの応答を待ってUIを更新する
+        showNotification(`新規サーバーの作成をホストに要求しました。`, 'info');
+        createServerModal.classList.add('hidden');
     });
 
 
@@ -235,22 +272,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- Game Server List View ---
         if (state.currentView === 'list' && serverItem) {
-            const serverId = parseInt(serverItem.dataset.serverId);
-            if (target.closest('[data-action="toggle-status"]')) { 
-                e.stopPropagation(); 
-                toggleServerStatus(serverId); 
-                return; 
+            const serverId = serverItem.dataset.serverId;
+            if (target.closest('[data-action="toggle-status"]')) {
+                e.stopPropagation();
+                toggleServerStatus(serverId);
+                return;
             }
-            if (!target.closest('[contenteditable="true"]') && !target.closest('button')) { 
-                showDetailView(serverId); 
-                return; 
+            if (!target.closest('[contenteditable="true"]') && !target.closest('button')) {
+                showDetailView(serverId);
+                return;
             }
         }
 
         // --- Game Server Detail View ---
         if (state.currentView === 'detail') {
             const serverId = state.selectedServerId;
-            const server = state.servers.find(s => s.id === serverId);
+            const server = state.servers.find(s => s.server_id === serverId);
             if (!server) return;
 
             if (target.closest('#back-to-list-btn')) { showListView(); return; }
@@ -278,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 編集可能なフィールド
     document.getElementById('app').addEventListener('focusout', (e) => {
         if (e.target.matches('.editable[contenteditable="true"]')) {
-            const serverId = e.target.closest('[data-server-id]') ? parseInt(e.target.closest('[data-server-id]').dataset.serverId) : state.selectedServerId;
+            const serverId = e.target.closest('[data-server-id]') ? e.target.closest('[data-server-id]').dataset.serverId : state.selectedServerId;
             updateServerData(serverId, e.target.dataset.field, e.target.innerText);
         }
     });
@@ -286,11 +323,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // 削除モーダル
     confirmDeleteBtn.addEventListener('click', () => {
         if (state.serverToDeleteId !== null) {
-            window.electronAPI.sendJsonMessage({
-                type: 'delete_server',
-                payload: { serverId: state.serverToDeleteId }
-            });
-            state.servers = state.servers.filter(s => s.id !== state.serverToDeleteId);
+            // サーバーオブジェクトとホストIDを見つける
+            let serverToDelete = null;
+            let hostId = null;
+            for (const [agentId, servers] of state.agentServers.entries()) {
+                const foundServer = servers.find(s => s.server_id === state.serverToDeleteId);
+                if (foundServer) {
+                    serverToDelete = foundServer;
+                    hostId = agentId;
+                    break;
+                }
+            }
+
+            if (serverToDelete && hostId) {
+                // 正しいホストに、正しいメッセージタイプで削除を要求
+                window.electronAPI.proxyToServer(hostId, {
+                    type: 'deleteServer',
+                    payload: { serverId: state.serverToDeleteId }
+                });
+
+                // 楽観的UI更新：エージェントからのリスト更新を待たずにUIから削除
+                const serversOnHost = state.agentServers.get(hostId) || [];
+                const serverIndex = serversOnHost.findIndex(s => s.server_id === state.serverToDeleteId);
+                if (serverIndex !== -1) {
+                    serversOnHost.splice(serverIndex, 1);
+                    state.agentServers.set(hostId, serversOnHost);
+                }
+            } else {
+                console.warn(`削除対象のサーバーが見つかりませんでした: ${state.serverToDeleteId}`);
+            }
+            
             state.serverToDeleteId = null;
             showListView();
         }
@@ -333,11 +395,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Agent/Main Process Communication ---
+    let isInitialAgentListReceived = false;
     window.electronAPI.onAgentList((agentList) => {
         state.physicalServers.clear();
         agentList.forEach(agent => {
             state.physicalServers.set(agent.id, { ...agent, metrics: {}, systemInfo: {}, logs: [] });
         });
+
+        // 初回のAgentリスト受信時に、サーバーリストを要求する
+        if (!isInitialAgentListReceived && agentList.length > 0) {
+            console.log('Initial agent list received. Requesting server lists.');
+            window.electronAPI.requestAllServers();
+            isInitialAgentListReceived = true;
+        }
+
         updateView();
     });
 
@@ -382,10 +453,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    window.electronAPI.onServerListUpdate(({ agentId, servers }) => {
+        // UI表示に必要なデフォルトプロパティを付与する
+        const serversWithUIData = servers.map(s => ({
+            ...s,
+            hostId: agentId,
+            // UIでsliceされる可能性があるため、デフォルト値として空の配列を保証する
+            logs: s.logs || [],
+            players: s.players || { current: 0, max: 20, list: [], recent: [] },
+            cpu: s.cpu || 0,
+            memory: s.memory || 0,
+            memoryMax: s.memoryMax || 2048,
+            tps: s.tps || 0,
+            memo: s.memo || '',
+        }));
+        console.log(`[Agent Op] Received server list update from agent ${agentId}. Total servers: ${serversWithUIData.length}`);
+        state.agentServers.set(agentId, serversWithUIData);
+        
+        // データ到着時にビューを直接更新する
+        if (state.currentView === 'list') {
+            renderServerList();
+        } else if (state.currentView === 'detail') {
+            updateDetailView();
+        }
+    });
+
+    window.electronAPI.onServerCreationFailed(({ agentId, error }) => {
+        const agent = state.physicalServers.get(agentId);
+        const agentName = agent ? agent.config.alias : agentId;
+        showNotification(`作成失敗 on ${agentName}: ${error}`, 'error');
+    });
+
     // --- Initial Load ---
     if (state.currentView === 'physical' || state.currentView === 'physical-detail') {
         startGlobalMetricsLoop();
     }
     updateView();
-    window.electronAPI.requestAgentList();
+    // window.electronAPI.requestAgentList(); // 初期エージェントリストはmainから自動で送られる
+
+    // --- 起動シーケンス ---
+    // 1. Mainプロセスからの初期ロード完了通知を待つ
+    window.electronAPI.onInitialLoadComplete(() => {
+        console.log('Initial load complete signal received from main.');
+        loadingOverlay.style.display = 'none';
+        appContainer.style.visibility = 'visible';
+    });
+
+    // 2. UIの準備ができたことをMainプロセスに通知
+    console.log('Renderer is ready, notifying main process.');
+    window.electronAPI.rendererReady();
 });
