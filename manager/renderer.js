@@ -54,6 +54,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const createServerModal = document.getElementById('create-server-modal');
     const confirmCreateServerBtn = document.getElementById('confirm-create-server-btn');
     const cancelCreateServerBtn = document.getElementById('cancel-create-server-btn');
+    const javaInstallOverlay = document.getElementById('java-install-overlay');
+    const javaInstallCancelBtn = document.getElementById('java-install-cancel-btn');
+    const javaInstallConfirmBtn = document.getElementById('java-install-confirm-btn');
+    const javaDownloadList = document.getElementById('java-download-list');
+    const javaInstallProgressBar = document.getElementById('java-install-progress-bar');
+    const javaInstallStatusText = document.getElementById('java-install-status-text');
 
     // --- 画面切り替え関数 ---
     const showListView = () => { 
@@ -232,8 +238,89 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newTab = tabBtn.dataset.tab;
                 if (state.physicalServerDetailActiveTab !== newTab) {
                     state.physicalServerDetailActiveTab = newTab;
-                    renderPhysicalServerDetail(); // Re-render the whole detail view to update tab styles
+                    if (newTab === 'settings') {
+                        // AgentにOS/CPU情報を要求 (WebSocket経由)
+                        window.electronAPI.proxyToServer(agentId, { type: 'get-agent-system-info', messageId: `systemInfo-${Date.now()}` });
+                    }
+                    renderPhysicalServerDetail(); // タブスタイル更新のために再描画
                 }
+                return;
+            }
+
+            // Javaインストールオーバーレイのキャンセルボタン
+            if (target === javaInstallCancelBtn) {
+                javaInstallOverlay.classList.add('hidden');
+                return;
+            }
+
+            // Javaインストールオーバーレイのインストールボタン
+            if (target === javaInstallConfirmBtn) {
+                const selectedJava = document.querySelector('input[name="java-version"]:checked');
+                if (!selectedJava) {
+                    showNotification('インストールするJavaバージョンを選択してください。', 'error');
+                    return;
+                }
+                const javaInstallData = JSON.parse(selectedJava.value);
+                const agentId = state.javaInstallAgentId;
+
+                if (agentId) {
+                    window.electronAPI.installJava(agentId, javaInstallData);
+                    showNotification(`Agent ${agentId} にJavaのインストールを要求しました。`, 'info');
+                    // インストール開始後、プログレスバーを表示
+                    javaInstallProgressBar.style.width = '0%';
+                    javaInstallProgressBar.classList.remove('hidden');
+                    javaInstallStatusText.textContent = 'ダウンロード中...';
+                    javaInstallStatusText.classList.remove('hidden');
+                }
+                return;
+            }
+            if (target.closest('[data-action="install-java"]')) {
+                // Javaインストールオーバーレイを表示
+                const javaInstallOverlay = document.getElementById('java-install-overlay');
+                javaInstallOverlay.classList.remove('hidden');
+                // stateに選択中のagentIdを保存
+                state.javaInstallAgentId = agentId;
+
+                // AgentのOSとCPUアーキテクチャが取得済みであることを確認
+                const agent = state.physicalServers.get(agentId);
+                if (!agent || !agent.systemInfo || !agent.systemInfo.os || !agent.systemInfo.arch) {
+                    showNotification('AgentのOS/CPU情報が取得できていません。設定タブで情報を読み込んでください。', 'error');
+                    javaInstallOverlay.classList.add('hidden');
+                    return;
+                }
+                
+                // JavaダウンロードURL取得時のためにOSとCPUアーキテクチャをstateに保存
+                state.javaDownloadOs = agent.systemInfo.os;
+                state.javaDownloadArch = agent.systemInfo.arch;
+
+                // Javaのダウンロード候補リストを取得するIPCイベントを呼び出す
+                window.electronAPI.getJavaDownloadInfo({
+                    feature_version: 'any', // 全てのバージョンを取得
+                    os: state.javaDownloadOs,
+                    arch: state.javaDownloadArch
+                }).then(response => {
+                    if (response.success) {
+                        // 取得したダウンロード情報には個別のJavaバージョン情報が含まれると仮定
+                        // ここでは簡単に、Adoptium APIから取得した情報をそのままrenderJavaDownloadListに渡す
+                        // 注意: Adoptium APIのレスポンス形式によっては、renderJavaDownloadListに渡すデータを整形する必要があるかもしれません。
+                        renderJavaDownloadList([
+                            {
+                                version: `Java ${response.feature_version}`, // 例: Java 17
+                                downloadUrl: response.downloadLink,
+                                fileSize: response.fileSize,
+                                os: state.javaDownloadOs,
+                                arch: state.javaDownloadArch
+                            }
+                        ]);
+                    } else {
+                        showNotification(`Javaダウンロード情報の取得に失敗しました: ${response.error}`, 'error');
+                        javaInstallOverlay.classList.add('hidden');
+                    }
+                }).catch(error => {
+                    console.error('Failed to get Java download info:', error);
+                    showNotification(`Javaダウンロード情報の取得中にエラーが発生しました: ${error.message}`, 'error');
+                    javaInstallOverlay.classList.add('hidden');
+                });
                 return;
             }
             if (target.closest('[data-action="save-agent-settings"]')) {
@@ -355,6 +442,51 @@ document.addEventListener('DOMContentLoaded', () => {
         state.serverToDeleteId = null;
         state.physicalServerToDeleteId = null;
     });
+
+    // Javaダウンロードリストをレンダリングする関数
+    const renderJavaDownloadList = (javaVersions) => {
+        javaDownloadList.innerHTML = ''; // Clear previous list
+        if (javaVersions.length === 0) {
+            javaDownloadList.innerHTML = '<p>利用可能なJavaバージョンがありません。</p>';
+            javaInstallConfirmBtn.disabled = true;
+            return;
+        }
+
+        javaInstallConfirmBtn.disabled = false;
+        javaVersions.forEach((java, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <input type="radio" id="java-${index}" name="java-version" value='${JSON.stringify(java)}' class="mr-2">
+                <label for="java-${index}" class="cursor-pointer">
+                    ${java.version} (${java.fileSize}) - ${java.os} ${java.arch}
+                </label>
+            `;
+            javaDownloadList.appendChild(li);
+        });
+    };
+
+    // JavaインストールオーバーレイのUIを更新する関数
+    const updateJavaInstallOverlay = (status) => {
+        const { progress, message, type, error } = status;
+
+        if (type === 'progress') {
+            javaInstallProgressBar.style.width = `${progress}%`;
+            javaInstallStatusText.textContent = message;
+        } else if (type === 'success') {
+            javaInstallProgressBar.style.width = '100%';
+            javaInstallStatusText.textContent = 'インストール完了！';
+            javaInstallProgressBar.classList.add('hidden');
+            javaInstallStatusText.classList.add('hidden');
+            // 必要に応じてオーバーレイを閉じる
+            javaInstallOverlay.classList.add('hidden');
+        } else if (type === 'error') {
+            javaInstallProgressBar.style.width = '0%';
+            javaInstallStatusText.textContent = `エラー: ${error}`;
+            showNotification(`Javaインストールエラー: ${error}`, 'error');
+            javaInstallProgressBar.classList.add('hidden');
+            javaInstallStatusText.classList.add('hidden');
+        }
+    };
     
     // --- ダークモード ---
     function toggleDarkMode() {
@@ -498,6 +630,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const agent = state.physicalServers.get(agentId);
         const agentName = agent ? agent.config.alias : agentId;
         showNotification(`作成失敗 on ${agentName}: ${error}`, 'error');
+    });
+
+    window.electronAPI.onJavaInstallStatus((status) => {
+        console.log('Javaインストールステータスを受信:', status);
+        const { agentId, progress, message, type, error, installDir, javaExecutable } = status;
+
+        // 対象のAgentのJavaインストールステータスを更新
+        if (state.physicalServers.has(agentId)) {
+            const agent = state.physicalServers.get(agentId);
+            agent.javaInstallStatus = { progress, message, type, error, installDir, javaExecutable };
+            
+            // Javaインストールオーバーレイがアクティブな場合、UIを更新
+            if (!document.getElementById('java-install-overlay').classList.contains('hidden')) {
+                updateJavaInstallOverlay(status);
+            }
+
+            if (type === 'success') {
+                showNotification(`Agent ${agent.config.alias} にJavaが正常にインストールされました。`, 'success');
+                // インストール完了後、オーバーレイを非表示にする
+                document.getElementById('java-install-overlay').classList.add('hidden');
+            } else if (type === 'error') {
+                showNotification(`Agent ${agent.config.alias} でJavaのインストールに失敗しました: ${error}`, 'error');
+            }
+        }
     });
 
     window.electronAPI.onMinecraftVersions(({ success, versions, error }) => {

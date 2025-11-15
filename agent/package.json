@@ -8,6 +8,8 @@
     "dev": "node index.js"
   },
   "dependencies": {
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "tar": "^6.2.1",
+    "adm-zip": "^0.5.10"
   }
 }

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, net } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
+const axios = require('axios'); // axiosをインポート
 const { v4: uuidv4 } = require('uuid');
 const { getAgents, setAgents, getWindowBounds, setWindowBounds } = require('./src/storeManager');
 
@@ -275,6 +276,40 @@ app.whenReady().then(() => {
       } else {
           console.log(`Cannot proxy message: Agent ${agentId} is not connected.`);
       }
+  });
+
+  // Adoptium APIからJavaのダウンロード情報を取得するハンドラー
+  ipcMain.handle('getJavaDownloadInfo', async (event, { feature_version, os, arch }) => {
+    try {
+      const jvm_impl = 'hotspot';
+      const image_type = 'jdk';
+      const vendor = 'eclipse';
+
+      const apiUrl = `https://api.adoptium.net/v3/assets/latest/${feature_version}/${jvm_impl}`;
+      const response = await axios.get(apiUrl, {
+        params: {
+          os,
+          architecture: arch,
+          image_type,
+          vendor
+        }
+      });
+
+      const release = response.data[0]; // 最初のリリースを取得
+
+      if (release && release.binary && release.binary.package) {
+        const downloadLink = release.binary.package.link;
+        const fileSize = release.binary.package.size;
+        console.log(`Java Download Info: URL=${downloadLink}, Size=${fileSize}`);
+        return { success: true, downloadLink, fileSize };
+      } else {
+        console.warn('No download link or file size found in Adoptium API response.');
+        return { success: false, error: 'Download information not found.' };
+      }
+    } catch (error) {
+      console.error('Error fetching Java download info from Adoptium API:', error);
+      return { success: false, error: error.message };
+    }
   });
 
   app.on('activate', function () {

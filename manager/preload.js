@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createServer: (data) => ipcRenderer.send('create-server', data), // { hostId }
   rendererReady: () => ipcRenderer.send('renderer-ready'),
   getMinecraftVersions: () => ipcRenderer.send('get-minecraft-versions'),
+  installJava: (agentId, javaInstallData) => ipcRenderer.send('install-java', { agentId, javaInstallData }),
+  getJavaDownloadInfo: (options) => ipcRenderer.invoke('getJavaDownloadInfo', options),
 
   // Main to Renderer (On)
   onMinecraftVersions: (callback) => ipcRenderer.on('minecraft-versions', (event, ...args) => callback(...args)),
@@ -22,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onAgentLogEntry: (callback) => ipcRenderer.on('agent-log-entry', (event, ...args) => callback(...args)),
   onServerListUpdate: (callback) => ipcRenderer.on('server_list_update', (event, ...args) => callback(...args)),
   onServerCreationFailed: (callback) => ipcRenderer.on('server_creation_failed', (event, ...args) => callback(...args)),
+  onJavaInstallStatus: (callback) => ipcRenderer.on('java-install-status', (event, ...args) => callback(...args)),
 
   // Keep this for now for other functionalities, will be removed if not needed
   sendJsonMessage: (message) => ipcRenderer.send('send-json-message', message)

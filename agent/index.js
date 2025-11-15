@@ -1,8 +1,9 @@
 const WebSocket = require('ws');
 const os = require('os');
 const path = require('path');
+const fs = require('fs'); // fsモジュールを追加
 const { initializeSettings, getSettings } = require('./src/settingsManager');
-const { loadAllServers, getAllServers, getServer, updateServer, deleteServer, startServer, stopServer } = require('./src/serverManager');
+const { loadAllServers, getAllServers, getServer, updateServer, deleteServer, startServer, stopServer, getJavaInstallDir, extractArchive, getJavaExecutablePath, downloadFile } = require('./src/serverManager');
 
 // --- 初期化処理 ---
 
@@ -18,7 +19,8 @@ loadAllServers(agentSettings.servers_directory);
 
 function getSystemInfo() {
   return {
-    os: `${os.type()} ${os.release()}`,
+    os: os.platform(), // OSの種類 (例: 'linux', 'win32', 'darwin')
+    arch: os.arch(),   // CPUアーキテクチャ (例: 'x64', 'arm64')
     totalRam: `${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)} GB`,
     cpu: os.cpus()[0].model,
   };
@@ -82,16 +84,23 @@ wss.on('connection', (ws) => {
     }
 
     console.log('Received message from manager:', parsedMessage);
-    const { type, payload } = parsedMessage;
-
-    switch (type) {
-      // --- System & Server Info ---
-      case 'getSystemInfo':
-        ws.send(JSON.stringify({ type: 'systemInfo', payload: getSystemInfo() }));
-        break;
-      case 'getMetrics':
-        ws.send(JSON.stringify({ type: 'metricsData', payload: getMetrics() }));
-        break;
+    const { type, payload, messageId } = parsedMessage; // messageIdを追加
+ 
+     switch (type) {
+       // --- System & Server Info ---
+       case 'get-agent-system-info': // ManagerからのIPCイベント名と一致させる
+         ws.send(JSON.stringify({
+           type: 'systemInfoResponse',
+           messageId: messageId, // Managerがどのリクエストに対する応答か識別できるようにする
+           payload: {
+             os: process.platform,
+             arch: process.arch
+           }
+         }));
+         break;
+       case 'getMetrics':
+         ws.send(JSON.stringify({ type: 'metricsData', payload: getMetrics() }));
+         break;
       case 'getAllServers': // このcaseは下位互換性のために残すが、基本はbroadcastServerListUpdateを使う
         ws.send(JSON.stringify({ type: 'server_list_update', payload: getAllServers() }));
         break;
@@ -167,6 +176,60 @@ wss.on('connection', (ws) => {
             } catch (error) {
                 console.error(`[Agent] Failed to execute action '${action}' for server ${serverId}:`, error);
                 ws.send(JSON.stringify({ type: 'server_action_failed', payload: { serverId, action, error: error.message } }));
+            }
+        }
+        break;
+
+      case 'installJava':
+        {
+            const { agentId, javaInstallData } = payload; // agentIdとjavaInstallDataを取得
+            const { version: javaVersion, downloadUrl, fileSize } = javaInstallData;
+
+            try {
+                const installDir = getJavaInstallDir(javaVersion);
+                const archivePath = path.join(os.tmpdir(), `java-archive-${javaVersion}${path.extname(downloadUrl)}`);
+
+                // ダウンロード開始をManagerに通知
+                ws.send(JSON.stringify({
+                    type: 'java-install-status',
+                    payload: { agentId, type: 'progress', progress: 0, message: 'ダウンロード中...' }
+                }));
+
+                // ダウンロード
+                await downloadFile(downloadUrl, archivePath, (progress) => {
+                    ws.send(JSON.stringify({
+                        type: 'java-install-status',
+                        payload: { agentId, type: 'progress', progress: progress, message: `ダウンロード中: ${progress}%` }
+                    }));
+                });
+
+                // 展開開始をManagerに通知
+                ws.send(JSON.stringify({
+                    type: 'java-install-status',
+                    payload: { agentId, type: 'progress', progress: 100, message: '展開中...' }
+                }));
+
+                // 展開
+                await extractArchive(archivePath, installDir);
+
+                // Java実行パスの取得
+                const javaExecutable = getJavaExecutablePath(installDir);
+
+                // 一時ファイルの削除
+                fs.unlinkSync(archivePath);
+
+                // 成功をManagerに通知
+                ws.send(JSON.stringify({
+                    type: 'java-install-status',
+                    payload: { agentId, type: 'success', installDir, javaExecutable }
+                }));
+            } catch (error) {
+                console.error(`[Agent] Failed to install Java ${javaVersion}:`, error);
+                // 失敗をManagerに通知
+                ws.send(JSON.stringify({
+                    type: 'java-install-status',
+                    payload: { agentId, type: 'error', error: error.message }
+                }));
             }
         }
         break;

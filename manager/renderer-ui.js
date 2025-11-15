@@ -696,7 +696,10 @@ const updatePhysicalServerDetailContent = () => {
                                     <input type="text" id="agent-path" value="${agent.config.path || ''}" placeholder="/path/to/servers" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 disabled:opacity-50">
                                 </div>
                             </div>
-                            <div class="mt-8 text-right">
+                            <div class="mt-8 flex justify-between items-center">
+                                <button data-action="open-java-install-modal" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                                    Javaをインストール
+                                </button>
                                 <button data-action="save-agent-settings" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
                                     設定を保存
                                 </button>

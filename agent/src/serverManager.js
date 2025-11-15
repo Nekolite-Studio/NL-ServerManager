@@ -3,6 +3,8 @@ const path = require('path');
 const https = require('https');
 const { spawn } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
+const tar = require('tar');
+const AdmZip = require('adm-zip');
 const { loadJsonSync, saveJsonSync, resolvePath } = require('./utils/storage');
 
 const SERVER_CONFIG_FILENAME = 'nl-server_manager.json';
@@ -26,6 +28,7 @@ function getDefaultServerConfig(serverId, serverName) {
         server_name: serverName || `My Server (${serverId.substring(0, 8)})`,
         runtime: {
             java_path: null,
+            java_version: null, // 追加: 使用するJavaのバージョン (例: jdk-17.0.8.7-hotspot)
             jvm_args: ['-Xmx2G', '-Xms1G'],
             server_jar: 'server.jar',
         },
@@ -119,6 +122,68 @@ function downloadFile(url, destPath) {
         
         request(url);
     });
+}
+
+/**
+ * Javaのインストールディレクトリパスを生成する
+ * @param {string} javaVersion - Javaのバージョン (例: jdk-17.0.8.7-hotspot)
+ * @returns {string} - 解決されたJavaインストールディレクトリのフルパス
+ */
+function getJavaInstallDir(javaVersion) {
+    return resolvePath(path.join('~', '.nekolite', 'java', javaVersion));
+}
+
+/**
+ * 指定されたアーカイブファイルを指定されたディレクトリに展開する
+ * @param {string} archivePath - アーカイブファイルへのパス
+ * @param {string} destDir - 展開先のディレクトリ
+ * @returns {Promise<void>}
+ */
+async function extractArchive(archivePath, destDir) {
+    const fileExtension = path.extname(archivePath);
+    console.log(`[ServerManager] Extracting ${archivePath} to ${destDir}`);
+
+    if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    if (fileExtension === '.zip') {
+        const zip = new AdmZip(archivePath);
+        zip.extractAllTo(destDir, true);
+    } else if (archivePath.endsWith('.tar.gz') || archivePath.endsWith('.tgz')) {
+        await tar.x({
+            file: archivePath,
+            cwd: destDir,
+            strip: 1, // 展開時に最上位のディレクトリを削除
+        });
+    } else {
+        throw new Error(`Unsupported archive format: ${fileExtension}`);
+    }
+    console.log(`[ServerManager] Successfully extracted ${archivePath}`);
+}
+
+/**
+ * インストールされたJavaの実行可能ファイルへのパスを返す
+ * @param {string} javaInstallDir - Javaのインストールディレクトリ
+ * @returns {string} - Java実行可能ファイルへのフルパス
+ */
+function getJavaExecutablePath(javaInstallDir) {
+    let javaPath;
+    if (process.platform === 'win32') {
+        javaPath = path.join(javaInstallDir, 'bin', 'java.exe');
+    } else {
+        javaPath = path.join(javaInstallDir, 'bin', 'java');
+    }
+
+    if (!fs.existsSync(javaPath)) {
+        // tar.x の strip オプションでディレクトリが削除される場合があるため、
+        // bin/java が直下にある可能性も考慮
+        javaPath = path.join(javaInstallDir, 'java');
+        if (!fs.existsSync(javaPath)) {
+            throw new Error(`Java executable not found at ${javaPath}`);
+        }
+    }
+    return javaPath;
 }
 
 /**
@@ -326,10 +391,25 @@ async function startServer(serversDirectory, serverId, onUpdate = () => {}) {
     }
 
     const serverDir = path.join(serversDirectory, serverId);
-    const { java_path, jvm_args, server_jar } = serverConfig.runtime;
+    const { java_path, java_version, jvm_args, server_jar } = serverConfig.runtime;
     
-    // TODO: java_pathがnullの場合、システムのデフォルトJavaを探すロジック
-    const javaExecutable = java_path || 'java';
+    let javaExecutable = java_path;
+    if (!javaExecutable && java_version) {
+        try {
+            const javaInstallDir = getJavaInstallDir(java_version);
+            javaExecutable = getJavaExecutablePath(javaInstallDir);
+            console.log(`[ServerManager] Using Java from configured version: ${javaExecutable}`);
+        } catch (error) {
+            console.error(`[ServerManager] Failed to get Java executable for version ${java_version}:`, error);
+            // Fallback to 'java' if specific version fails
+            javaExecutable = 'java';
+            console.warn(`[ServerManager] Falling back to default 'java' command for server ${serverId}.`);
+        }
+    } else if (!javaExecutable) {
+        javaExecutable = 'java'; // Fallback to system default 'java'
+        console.warn(`[ServerManager] No Java path or version configured. Using default 'java' command for server ${serverId}.`);
+    }
+
     const args = [...jvm_args, '-jar', server_jar, 'nogui'];
 
     console.log(`[ServerManager] Starting server ${serverId} in ${serverDir}`);
