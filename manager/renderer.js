@@ -90,33 +90,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const server = state.servers.find(s => s.server_id === serverId);
         if (server) {
             
-            // Send JSON message to agent
+            // Agentにメッセージを送信する
             const action = server.status === 'running' ? 'stop' : 'start';
             window.electronAPI.proxyToServer(server.hostId, {
-                type: 'server_control',
+                type: 'control_server',
                 payload: {
                     serverId: server.server_id,
                     action: action,
                 }
             });
-
-            server.status = server.status === 'running' ? 'stopped' : 'running';
-            
-            if(server.status === 'stopped') { 
-                server.tps = 0.0; server.players.current = 0; server.players.list = []; server.cpu = 0.0; server.memory = 0;
-            } else { 
-                server.tps = 18.0 + Math.random() * 2; 
-                server.players.current = Math.floor(Math.random() * server.players.max); 
-                server.players.list = server.players.recent.slice(0, server.players.current);
-                server.cpu = 20.0 + Math.random() * 30;
-                server.memory = (server.memoryMax * 0.3) + (Math.random() * server.memoryMax * 0.4);
-            }
-            
-            if (state.currentView === 'list') {
-                renderServerList();
-            } else if (state.currentView === 'detail' && state.selectedServerId === serverId) {
-                updateDetailView();
-            }
+            // ダミーロジックは削除。UIの更新はAgentからのレスポンス(server_list_update)によって行われる
         }
     };
     
@@ -185,6 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('confirm-create-server-btn').disabled = false;
         }
         
+        // バージョンリストの取得を要求
+        document.getElementById('version-select').innerHTML = '<option>バージョンを読み込み中...</option>';
+        window.electronAPI.getMinecraftVersions();
 
         createServerModal.classList.remove('hidden');
     });
@@ -205,14 +191,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     confirmCreateServerBtn.addEventListener('click', () => {
         const hostId = document.getElementById('host-select').value;
+        const versionId = document.getElementById('version-select').value;
 
-        if (!hostId) {
-            showNotification('ホストマシンが選択されていません。', 'error');
+        if (!hostId || !versionId) {
+            showNotification('ホストマシンまたはバージョンが選択されていません。', 'error');
             return;
         }
 
-        // mainプロセスにサーバー作成を要求 (serverIdは削除)
-        window.electronAPI.createServer({ hostId });
+        // mainプロセスにサーバー作成を要求
+        window.electronAPI.createServer({ hostId, versionId });
 
         // mainからの応答を待ってUIを更新する
         showNotification(`新規サーバーの作成をホストに要求しました。`, 'info');
@@ -433,6 +420,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'metricsData':
                     agent.metrics = data.payload;
                     break;
+                case 'server_update':
+                    {
+                        const { serverId, type, payload } = data.payload;
+                        const hostServers = state.agentServers.get(agentId);
+                        if (hostServers) {
+                            const server = hostServers.find(s => s.server_id === serverId);
+                            if (server) {
+                                console.log(`[Renderer] Received server_update for ${serverId}: ${type}`);
+                                switch (type) {
+                                    case 'status_change':
+                                        server.status = payload;
+                                        break;
+                                    case 'log':
+                                        // ログがない場合に備えて初期化
+                                        if (!server.logs) server.logs = [];
+                                        server.logs.push(payload);
+                                        // パフォーマンスのためにログ配列の長さを制限
+                                        if (server.logs.length > 200) server.logs.shift();
+                                        break;
+                                }
+                                // ゲームサーバー関連のビューが表示されている場合のみUIを更新
+                                if (state.currentView === 'list' || (state.currentView === 'detail' && state.selectedServerId === serverId)) {
+                                    updateView();
+                                }
+                            }
+                        }
+                    }
+                    // このメッセージタイプは物理サーバーのビュー更新とは独立しているため、ここで処理を終了
+                    return;
             }
             if ((state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId) || state.currentView === 'physical') {
                 updateView();
@@ -482,6 +498,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const agent = state.physicalServers.get(agentId);
         const agentName = agent ? agent.config.alias : agentId;
         showNotification(`作成失敗 on ${agentName}: ${error}`, 'error');
+    });
+
+    window.electronAPI.onMinecraftVersions(({ success, versions, error }) => {
+        const versionSelect = document.getElementById('version-select');
+        if (success) {
+            // release -> snapshot の順にソート
+            versions.sort((a, b) => {
+                if (a.type === 'release' && b.type !== 'release') return -1;
+                if (a.type !== 'release' && b.type === 'release') return 1;
+                return 0; // 他は元の順序を維持
+            });
+
+            versionSelect.innerHTML = versions.map(v =>
+                `<option value="${v.id}">${v.id} (${v.type})</option>`
+            ).join('');
+        } else {
+            versionSelect.innerHTML = `<option value="">バージョン取得失敗</option>`;
+            showNotification(`Minecraftバージョンの取得に失敗しました: ${error}`, 'error');
+        }
     });
 
     // --- Initial Load ---

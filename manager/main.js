@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, net } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
@@ -253,13 +253,13 @@ app.whenReady().then(() => {
     deleteAgent(agentId);
   });
 
-  ipcMain.on('create-server', (event, { hostId }) => {
-    console.log(`Received request to create server on host ${hostId}`);
+  ipcMain.on('create-server', (event, { hostId, versionId }) => {
+    console.log(`Received request to create server on host ${hostId} with version ${versionId}`);
     const agent = getAgent(hostId);
     if (agent && agent.ws && agent.ws.readyState === WebSocket.OPEN) {
         agent.ws.send(JSON.stringify({
             type: 'create_server',
-            payload: {} // serverIdを削除
+            payload: { versionId }
         }));
     } else {
         console.log(`Cannot create server: Agent ${hostId} is not connected.`);
@@ -279,6 +279,52 @@ app.whenReady().then(() => {
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  // --- Minecraft Version Handling ---
+
+  // Mojangのバージョンマニフェストを取得する関数
+  async function fetchMinecraftVersions() {
+    return new Promise((resolve, reject) => {
+      const request = net.request({
+        method: 'GET',
+        protocol: 'https:',
+        hostname: 'launchermeta.mojang.com',
+        path: '/mc/game/version_manifest.json'
+      });
+
+      let body = '';
+      request.on('response', (response) => {
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          try {
+            const parsedJson = JSON.parse(body);
+            resolve(parsedJson.versions);
+          } catch (error) {
+            reject(`Failed to parse JSON: ${error.message}`);
+          }
+        });
+      });
+
+      request.on('error', (error) => {
+        reject(`Request failed: ${error.message}`);
+      });
+
+      request.end();
+    });
+  }
+
+  // レンダラからのバージョン取得要求をハンドル
+  ipcMain.on('get-minecraft-versions', async (event) => {
+    try {
+      const versions = await fetchMinecraftVersions();
+      mainWindow.webContents.send('minecraft-versions', { success: true, versions });
+    } catch (error) {
+      console.error('Failed to fetch Minecraft versions:', error);
+      mainWindow.webContents.send('minecraft-versions', { success: false, error: error.toString() });
+    }
   });
 });
 

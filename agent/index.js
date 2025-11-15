@@ -2,7 +2,7 @@ const WebSocket = require('ws');
 const os = require('os');
 const path = require('path');
 const { initializeSettings, getSettings } = require('./src/settingsManager');
-const { loadAllServers, getAllServers, getServer, updateServer, deleteServer } = require('./src/serverManager');
+const { loadAllServers, getAllServers, getServer, updateServer, deleteServer, startServer, stopServer } = require('./src/serverManager');
 
 // --- 初期化処理 ---
 
@@ -72,7 +72,7 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'server_list_update', payload: getAllServers() }));
 
 
-  ws.on('message', (message) => {
+  ws.on('message', async (message) => {
     let parsedMessage;
     try {
       parsedMessage = JSON.parse(message.toString());
@@ -99,22 +99,25 @@ wss.on('connection', (ws) => {
       // --- Server Management ---
       case 'create_server':
         {
-            // serverIdはペイロードに含まれなくなった
             const serversDirectory = getSettings().servers_directory;
-            // 第3引数は空のオブジェクトで良い
-            const result = updateServer(serversDirectory, null, {});
+            // payloadからversionIdを取得
+            const { versionId } = payload;
+            // updateServerは非同期になるのでawaitを使う
+            // 第3引数にversionIdを含むオブジェクトを渡す
+            const result = await updateServer(serversDirectory, null, { versionId });
             if (result && result.config) {
                  ws.send(JSON.stringify({ type: 'server_created', payload: { ...result.config, path: result.path } }));
                  broadcastServerListUpdate(); // リストの更新をブロードキャスト
             } else {
-                 ws.send(JSON.stringify({ type: 'server_creation_failed', payload: { error: 'Failed to create server directory or config file. It might already exist.', path: result ? result.path : serversDirectory } }));
+                 // resultがnullの場合、pathも存在しないので調整
+                 ws.send(JSON.stringify({ type: 'server_creation_failed', payload: { error: 'Failed to create server. It might already exist or the download failed.', path: 'N/A' } }));
                  // 失敗した場合も、既存のリストを再送してUIの整合性を保つ
                  broadcastServerListUpdate();
             }
         }
         break;
       case 'createServer': // 古いAPI, 将来的に削除
-        const createResult = updateServer(getSettings().servers_directory, null, payload.config);
+        const createResult = await updateServer(getSettings().servers_directory, null, payload.config);
         if (createResult && createResult.config) {
             ws.send(JSON.stringify({ type: 'serverCreated', payload: { ...createResult.config, path: createResult.path } }));
             broadcastServerListUpdate();
@@ -124,7 +127,7 @@ wss.on('connection', (ws) => {
         }
         break;
       case 'updateServer':
-        const updateResult = updateServer(getSettings().servers_directory, payload.serverId, payload.config);
+        const updateResult = await updateServer(getSettings().servers_directory, payload.serverId, payload.config);
         ws.send(JSON.stringify({ type: 'serverUpdated', payload: { ...updateResult.config, path: updateResult.path } }));
         broadcastServerListUpdate();
         break;
@@ -132,6 +135,40 @@ wss.on('connection', (ws) => {
         const deleteResult = deleteServer(getSettings().servers_directory, payload.serverId);
         ws.send(JSON.stringify({ type: 'serverDeleted', payload: { serverId: payload.serverId, success: deleteResult.success, path: deleteResult.path } }));
         broadcastServerListUpdate();
+        break;
+
+      case 'control_server':
+        {
+            const { serverId, action } = payload;
+            console.log(`Received control request for server ${serverId}: ${action}`);
+            const serversDirectory = getSettings().servers_directory;
+            try {
+                if (action === 'start') {
+                    // サーバーの状態更新をManagerに通知するためのコールバック
+                    const onUpdate = (update) => {
+                        // この接続（ws）経由でManagerに更新情報を送信
+                        ws.send(JSON.stringify({
+                            type: 'server_update',
+                            payload: {
+                                serverId,
+                                type: update.type,
+                                payload: update.payload
+                            }
+                        }));
+                    };
+                    await startServer(serversDirectory, serverId, onUpdate);
+                } else if (action === 'stop') {
+                    await stopServer(serverId);
+                    // サーバー停止は serverManager の 'close' イベントで検知され、
+                    // onUpdate コールバックを通じて通知されるので、ここでの個別通知は不要。
+                } else {
+                    console.warn(`[Agent] Unknown server control action: ${action}`);
+                }
+            } catch (error) {
+                console.error(`[Agent] Failed to execute action '${action}' for server ${serverId}:`, error);
+                ws.send(JSON.stringify({ type: 'server_action_failed', payload: { serverId, action, error: error.message } }));
+            }
+        }
         break;
 
       default:

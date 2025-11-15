@@ -11,8 +11,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteAgent: (agentId) => ipcRenderer.send('delete-agent', { agentId }),
   createServer: (data) => ipcRenderer.send('create-server', data), // { hostId }
   rendererReady: () => ipcRenderer.send('renderer-ready'),
+  getMinecraftVersions: () => ipcRenderer.send('get-minecraft-versions'),
 
   // Main to Renderer (On)
+  onMinecraftVersions: (callback) => ipcRenderer.on('minecraft-versions', (event, ...args) => callback(...args)),
   onInitialLoadComplete: (callback) => ipcRenderer.once('initial-load-complete', (event, ...args) => callback(...args)),
   onAgentList: (callback) => ipcRenderer.on('agent-list', (event, ...args) => callback(...args)),
   onAgentStatusUpdate: (callback) => ipcRenderer.on('agent-status-update', (event, ...args) => callback(...args)),
