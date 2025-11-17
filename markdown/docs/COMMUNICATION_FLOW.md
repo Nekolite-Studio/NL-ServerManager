@@ -81,17 +81,20 @@ sequenceDiagram
     participant Main as Manager (メイン)
     participant Renderer as レンダラー (UI)
 
-    ServerProcess->>Agent: 標準出力/エラーにログを出力
-    Agent->>Agent: onUpdate({type: 'log', payload: '...'}) をコール
-    Agent->>Main: WebSocket: {type: 'server-update', payload: {serverId, type: 'log', ...}}
-    Main->>Renderer: IPC 'server-update'
-    Renderer->>Renderer: 詳細ビューのログ画面を更新
+    Agent->>Main: WebSocket: {type: 'server-update', payload: {serverId, type: 'status_change', payload: 'starting'}}
+    Main->>Renderer: IPC: 'server-update'
+    Renderer->>Renderer: UIを「起動中」に更新
+    
+    ServerProcess->>Agent: ログを出力 ("... Done ...")
+    Agent->>Agent: 起動完了を検知
+    Agent->>Main: WebSocket: {type: 'server-update', payload: {serverId, type: 'status_change', payload: 'running'}}
+    Main->>Renderer: IPC: 'server-update'
+    Renderer->>Renderer: UIを「起動済み」に更新
 ```
 
-1.  **Agent内部:** `startServer`時に起動されたサーバープロセスからの出力を監視します。
-2.  **Agent → Main (WebSocket):** 新しいログを受け取ると、`Agent`は`server-update`メッセージを`Manager`に送信します。これには、どのサーバーの更新かを示す`serverId`が含まれます。
-3.  **Main → UI (IPC):** メインプロセスは受信した更新情報を`server-update`チャネルでUIに転送します。
-4.  **UI更新:** UIは、現在表示中の詳細画面が対象のサーバーであれば、ログ表示を更新します。
+1.  **起動開始通知:** `startServer`関数が呼ばれると、`Agent`は即座にステータスが`starting`になったことを`Manager`に通知します。UIはこれを受けて「起動中」の表示に切り替わります。
+2.  **ログ監視と完了検知:** `Agent`はサーバープロセスの標準出力を監視し、起動完了を示す特定のログ（例: "Done"）を待ち受けます。
+3.  **起動完了通知:** 完了を示すログを検知すると、`Agent`はステータスが`running`になったことを`Manager`に通知します。UIはこれを受けて「起動済み」の表示に更新します。
 
 ### フロー4: EULA同意フロー
 

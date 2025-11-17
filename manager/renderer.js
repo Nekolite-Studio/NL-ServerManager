@@ -203,6 +203,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.serversBeingDeleted.delete(serverId);
              }
              updateView();
+        } else if (operation === 'update-server') {
+            if (success) {
+                showNotification('設定を保存しました。', 'success');
+                // stateのサーバー情報を更新
+                if (state.agentServers.has(agentId)) {
+                   const server = state.agentServers.get(agentId).find(s => s.server_id === payload.serverId);
+                   if (server) {
+                       // payload.config に更新された設定が含まれている想定
+                       Object.assign(server, payload.config);
+                       updateView();
+                   }
+                }
+            } else {
+                showNotification(`設定の保存に失敗しました: ${error.message}`, 'error');
+            }
         }
     });
 
@@ -283,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!target.closest('[data-action]')) { // アクションボタン以外をクリック
                 state.selectedServerId = serverItem.dataset.serverId;
                 state.currentView = 'detail';
-                state.detailActiveTab = 'basic';
+                state.detailActiveTab = 'console';
                 updateView();
             }
             return;
@@ -320,17 +335,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // サブタブ切り替え (ゲームサーバー詳細 -> 基本設定)
-        const detailSubTabBtn = target.closest('.detail-subtab-btn');
-        if (detailSubTabBtn) {
-            const newSubTab = detailSubTabBtn.dataset.subtab;
-            if (state.detailBasicActiveSubTab !== newSubTab) {
-                state.detailBasicActiveSubTab = newSubTab;
-                updateDetailBasicSubTab(); // サブタブコンテンツのみ再描画
-            }
-            return;
-        }
-
         // タブ切り替え (物理サーバー詳細)
         const physicalTabBtn = target.closest('.physical-detail-tab-btn');
         if (physicalTabBtn) {
@@ -403,6 +407,29 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                             actionBtn.textContent = '保存しました！';
                             setTimeout(() => { actionBtn.textContent = '変更を保存'; }, 2000);
+                        }
+                    }
+                    break;
+                case 'save-launch-config':
+                    if (serverId) {
+                        const server = getters.selectedServer();
+                        if (server) {
+                            const javaPath = document.getElementById('java-path').value;
+                            const minMemory = document.getElementById('min-memory').value;
+                            const maxMemory = document.getElementById('max-memory').value;
+                            const customArgs = document.getElementById('custom-args').value;
+
+                            const runtimeConfig = {
+                                java_path: javaPath.trim() === '' ? null : javaPath,
+                                min_memory: parseInt(minMemory, 10) || 1024,
+                                max_memory: parseInt(maxMemory, 10) || 2048,
+                                custom_args: customArgs,
+                            };
+
+                            window.electronAPI.proxyToAgent(server.hostId, {
+                                type: 'update-server',
+                                payload: { serverId: server.server_id, config: { runtime: runtimeConfig } }
+                            });
                         }
                     }
                     break;

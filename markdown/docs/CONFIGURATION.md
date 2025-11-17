@@ -88,10 +88,9 @@
     "runtime": {
         "java_path": null,
         "java_version": "17",
-        "jvm_args": [
-            "-Xmx4G",
-            "-Xms2G"
-        ],
+        "min_memory": 1024,
+        "max_memory": 2048,
+        "custom_args": "-XX:+UseG1GC",
         "server_jar": "server.jar"
     },
     "status": "stopped",
@@ -103,11 +102,13 @@
 -   **`server_id` (string):** サーバーの一意な識別子。ディレクトリ名と一致します。
 -   **`server_name` (string):** `manager`のUI上に表示されるサーバー名。
 -   **`runtime` (Object):** サーバーの実行環境を定義します。
-    -   **`java_path` (string | null):** Java実行ファイルの絶対パス。`null`の場合、`java_version`に基づいて自動検出されるか、システムのデフォルト`java`が使用されます。
+    -   **`java_path` (string | null):** Java実行ファイルの絶対パス。`'default'`または`null`の場合、`java_version`に基づいて自動検出されるか、システムのデフォルト`java`が使用されます。
     -   **`java_version` (string | null):** このサーバーが使用すべきJavaのバージョン。`manager`のUIからインストールしたJavaのバージョンがここに設定されます。`agent`側で**文字列**として保存されます。
-    -   **`jvm_args` (Array<string>):** サーバー起動時に渡されるJVM引数。（例: メモリ割り当て）
+    -   **`min_memory` (number | null):** サーバーの最小メモリ割り当て（MB）。
+    -   **`max_memory` (number | null):** サーバーの最大メモリ割り当て（MB）。
+    -   **`custom_args` (string | null):** サーバー起動時に追加で渡される、スペース区切りのカスタムJVM引数。
     -   **`server_jar` (string):** 起動するサーバーJARファイルの名前。
--   **`status` (string):** サーバーの現在の状態。`running` または `stopped`。
+-   **`status` (string):** サーバーの現在の状態。`running` または `stopped`。**注意:** この値はディスクに保存されますが、Agent起動時には実際のプロセス存在状況に基づいてメモリ上で上書きされます。そのため、ディスク上のこの値は信頼されません。
 -   **`auto_start` (boolean):** `agent`起動時にこのサーバーを自動で起動するかどうか。（将来的な機能）
 
 > **NOTE:**

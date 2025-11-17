@@ -32,6 +32,14 @@ const Message = Object.freeze({
     PROXY_TO_AGENT: 'proxy-to-agent',
 });
 
+const ServerStatus = Object.freeze({
+    STOPPED: 'stopped',
+    STARTING: 'starting',
+    RUNNING: 'running',
+    STOPPING: 'stopping',
+});
+
 module.exports = {
     Message,
+    ServerStatus,
 };

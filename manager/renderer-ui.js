@@ -4,8 +4,16 @@
 
 // ヘルパー関数
 const getStatusClasses = (status) => {
-    if (status === 'running') return { text: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-500/20' };
-    return { text: 'text-red-600 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-500/20' };
+    switch (status) {
+        case 'running':
+            return { text: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-500/20' };
+        case 'starting':
+        case 'stopping':
+            return { text: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-500/20' };
+        case 'stopped':
+        default:
+            return { text: 'text-red-600 dark:text-red-400', bg: 'bg-red-100 dark:bg-red-500/20' };
+    }
 };
 const getAgentStatusClasses = (status) => {
     switch (status) {
@@ -151,8 +159,8 @@ const renderServerList = () => {
                 <div class="col-span-1"><span class="md:hidden text-xs text-gray-500 dark:text-gray-400">TPS</span><p class="font-mono font-bold ${tpsColor}">${server.status === 'running' ? (server.tps || 0).toFixed(1) : '-'}</p></div>
                 <!-- ステータスボタン -->
                 <div class="col-span-full sm:col-span-1 hidden 2xl:block">
-                    <button data-action="toggle-status" class="w-full font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}" ${isBeingDeleted ? 'disabled' : ''}>
-                        ${server.status === 'running' ? '停止' : '起動'}
+                    <button data-action="toggle-status" class="w-full font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}" ${isBeingDeleted || server.status === 'starting' || server.status === 'stopping' ? 'disabled' : ''}>
+                        ${server.status === 'running' ? '停止' : (server.status === 'stopping' ? '停止中...' : '起動')}
                     </button>
                 </div>
             </div>`;
@@ -216,7 +224,7 @@ const renderServerDetail = () => {
     
     const host = state.physicalServers.get(server.hostId);
     const isBeingDeleted = state.serversBeingDeleted.has(server.server_id);
-    const statusClasses = getStatusClasses(server.status);
+    const statusClasses = getStatusClasses(server.status); // 修正済み
     const tpsColor = getTpsColor(server.tps || 0);
     const cpuColor = getCpuColor(server.cpu || 0);
     const memColor = getMemoryColor(server.memory || 0, server.memoryMax || 1);
@@ -245,7 +253,9 @@ const renderServerDetail = () => {
 
                 <div class="flex items-center gap-2 w-full sm:w-auto">
                     <button data-action="open-dir" class="w-1/2 sm:w-auto bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex-grow" ${isBeingDeleted ? 'disabled' : ''}>フォルダ</button>
-                    <button data-action="toggle-status" class="w-1/2 sm:w-auto font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 flex-grow ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}" ${isBeingDeleted ? 'disabled' : ''}>${server.status === 'running' ? '停止' : '起動'}</button>
+                    <button data-action="toggle-status" class="w-1/2 sm:w-auto font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 flex-grow ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}" ${isBeingDeleted || server.status === 'starting' || server.status === 'stopping' ? 'disabled' : ''}>
+                        ${server.status === 'running' ? '停止' : (server.status === 'starting' ? '起動中...' : (server.status === 'stopping' ? '停止中...' : '起動'))}
+                    </button>
                 </div>
             </div>
         </div>
@@ -253,7 +263,9 @@ const renderServerDetail = () => {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">ステータス</div>
-                <div class="text-2xl font-bold ${statusClasses.text} mt-1">${server.status === 'running' ? '起動中' : '停止中'}</div>
+                <div class="text-2xl font-bold ${statusClasses.text} mt-1">
+                    ${{'running': '起動済み', 'starting': '起動中', 'stopping': '停止中', 'stopped': '停止済み'}[server.status] || '不明'}
+                </div>
             </div>
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">プレイヤー</div>
@@ -270,26 +282,22 @@ const renderServerDetail = () => {
             </div>
         </div>
 
-        <div class="flex flex-col lg:flex-row-reverse gap-6 mt-6">
-            
-            <div class="lg:flex-1">
-                <div id="detail-main-area" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" style="height: calc(100vh - 400px);">
-                    <!-- 内容は updateDetailViewContent で動的に挿入 -->
-                </div>
-            </div>
-            
-            <div id="detail-context-area" class="lg:w-auto lg:flex-shrink-0">
-                <!-- 内容は updateDetailViewContent で動的に挿入 -->
-            </div>
-
-            <div class="lg:w-auto lg:flex-shrink-0 space-y-6">
-                <nav class="flex lg:flex-col space-x-2 lg:space-x-0 lg:space-y-2 w-fit" aria-label="Tabs">
-                    <button data-tab="basic" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'basic' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>基本設定</button>
+        <div class="flex flex-col lg:flex-row gap-6 mt-6">
+            <div class="lg:w-64 lg:flex-shrink-0 space-y-6">
+                <nav class="flex lg:flex-col space-x-2 lg:space-x-0 lg:space-y-2" aria-label="Tabs">
+                    <button data-tab="console" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'console' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>コンソールログ</button>
+                    <button data-tab="launch-config" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'launch-config' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>起動構成</button>
+                    <button data-tab="properties" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'properties' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>サーバー設定</button>
                     <button data-tab="mods" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'mods' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>Mod</button>
                     <button data-tab="plugins" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'plugins' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>Plugin</button>
                     <button data-tab="players" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'players' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>プレイヤー</button>
                     <button data-tab="danger" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'danger' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>その他</button>
                 </nav>
+            </div>
+            <div class="flex-1">
+                <div id="detail-main-area" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" style="height: calc(100vh - 400px);">
+                    <!-- 内容は updateDetailViewContent で動的に挿入 -->
+                </div>
             </div>
         </div>
     `;
@@ -298,118 +306,123 @@ const renderServerDetail = () => {
 };
 
 const updateDetailViewContent = (server) => {
-    const contextArea = document.getElementById('detail-context-area');
     const mainArea = document.getElementById('detail-main-area');
-    if (!contextArea || !mainArea) return;
+    if (!mainArea) return;
 
     server = server || getters.selectedServer();
     if (!server) return;
 
     const isBeingDeleted = state.serversBeingDeleted.has(server.server_id);
     if(isBeingDeleted) {
-        // 削除中はメインエリアとコンテキストエリアを空にする
-        mainArea.innerHTML = '<div class="p-4 text-center text-gray-500">このサーバーは現在削除処理中です...</div>';
-        contextArea.innerHTML = '';
+        mainArea.innerHTML = '<div class="p-6 text-center text-gray-500">このサーバーは現在削除処理中です...</div>';
         return;
     }
 
     switch(state.detailActiveTab) {
-        case 'basic':
-            contextArea.innerHTML = `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 space-y-4">
-                    <h3 class="text-lg font-semibold">起動構成</h3>
-                    <div>
-                        <label for="java-path" class="text-sm font-medium text-gray-500 dark:text-gray-400">Java実行パス</label>
-                        <input type="text" id="java-path" value="default" class="mt-1 w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
-                    <div>
-                        <label for="memory-alloc" class="text-sm font-medium text-gray-500 dark:text-gray-400">メモリ割り当て (MB)</label>
-                        <input type="number" id="memory-alloc" value="${server.memoryMax}" class="mt-1 w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
-                    <button class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg">
-                        構成を保存
-                    </button>
-                </div>
-            `;
+        case 'console':
             mainArea.innerHTML = `
-                <div class="flex border-b border-gray-200 dark:border-gray-700">
-                    <button data-subtab="log" class="flex-1 detail-subtab-btn px-4 py-3 font-medium text-sm ${state.detailBasicActiveSubTab === 'log' ? 'text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}">コンソール / ログ</button>
-                    <button data-subtab="props" class="flex-1 detail-subtab-btn px-4 py-3 font-medium text-sm ${state.detailBasicActiveSubTab === 'props' ? 'text-primary border-b-2 border-primary' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}">サーバー設定 (properties)</button>
-                </div>
-                <div id="detail-basic-content" class="p-4" style="height: calc(100% - 50px); overflow-y: auto;">
+                <div class="flex flex-col h-full">
+                    <div class="bg-gray-50 dark:bg-black p-4 rounded-t-lg flex-1 overflow-y-auto custom-scrollbar">
+                        <pre id="server-log-output" class="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono">${(server.logs || []).join('\n')}</pre>
+                    </div>
+                    <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex gap-2">
+                        <input type="text" id="command-input" placeholder="コマンドを入力..." class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white p-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:border-primary focus:ring-1 focus:ring-primary transition duration-150">
+                        <button id="send-command-btn" class="bg-primary hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200">
+                            実行
+                        </button>
+                    </div>
                 </div>
             `;
-            updateDetailBasicSubTab(server);
+            const logOutputEl = mainArea.querySelector('#server-log-output');
+            if(logOutputEl) logOutputEl.parentElement.scrollTop = logOutputEl.parentElement.scrollHeight;
+            break;
+
+        case 'launch-config':
+            {
+                const runtime = server.runtime || {};
+                mainArea.innerHTML = `
+                    <div class="p-6 h-full flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold">起動構成</h2>
+                            <button data-action="save-launch-config" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">構成を保存</button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                            <div class="space-y-6">
+                                <div>
+                                    <label for="java-path" class="block text-sm font-medium text-gray-500 dark:text-gray-400">Java実行パス</label>
+                                    <input type="text" id="java-path" value="${runtime.java_path || ''}" class="mt-1 w-full bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Agentのデフォルト設定を使用">
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="min-memory" class="block text-sm font-medium text-gray-500 dark:text-gray-400">最小メモリ割り当て (MB)</label>
+                                        <input type="number" id="min-memory" value="${runtime.min_memory || 1024}" class="mt-1 w-full bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                    <div>
+                                        <label for="max-memory" class="block text-sm font-medium text-gray-500 dark:text-gray-400">最大メモリ割り当て (MB)</label>
+                                        <input type="number" id="max-memory" value="${runtime.max_memory || 2048}" class="mt-1 w-full bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="custom-args" class="block text-sm font-medium text-gray-500 dark:text-gray-400">カスタムJVM引数</label>
+                                    <textarea id="custom-args" rows="3" class="mt-1 w-full bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=50">${runtime.custom_args || ''}</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            break;
+
+        case 'properties':
+            mainArea.innerHTML = `
+                <div class="p-6 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">サーバー設定 (server.properties)</h2>
+                        <button data-action="save-properties" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">変更を保存</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                        ${renderPropertiesEditor(server)}
+                    </div>
+                </div>
+            `;
             break;
 
         case 'mods':
         case 'plugins':
-            mainArea.innerHTML = `<div class="p-4"><h3 class="text-lg font-semibold">${state.detailActiveTab === 'mods' ? 'Mod' : 'Plugin'}管理</h3><p class="mt-4 text-gray-500">（この機能は現在リファクタリング中です）</p></div>`;
-            contextArea.innerHTML = '';
+            mainArea.innerHTML = `<div class="p-6"><h3 class="text-xl font-bold">${state.detailActiveTab === 'mods' ? 'Mod' : 'Plugin'}管理</h3><p class="mt-4 text-gray-500">（この機能は現在開発中です）</p></div>`;
             break;
 
         case 'players':
-            mainArea.innerHTML = `<div class="p-4"><h3 class="text-lg font-semibold">プレイヤー管理</h3><p class="mt-4 text-gray-500">（この機能は現在リファクタリング中です）</p></div>`;
-            contextArea.innerHTML = '';
+            mainArea.innerHTML = `<div class="p-6"><h3 class="text-xl font-bold">プレイヤー管理</h3><p class="mt-4 text-gray-500">（この機能は現在開発中です）</p></div>`;
             break;
         
         case 'danger':
-            contextArea.innerHTML = `
-                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                    <h3 class="text-gray-500 dark:text-gray-400 text-sm font-semibold mb-2">コントロール</h3>
-                    <button data-action="restart-server" class="w-full mt-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 rounded-lg shadow-md transition duration-200">
-                        サーバー再起動
-                    </button>
-                </div>
-            `;
             mainArea.innerHTML = `
-                <div class="p-4">
-                    <h3 class="text-lg font-semibold text-red-500 dark:text-red-400">危険ゾーン</h3>
-                    <div class="mt-4 bg-red-100 dark:bg-red-900/50 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center">
-                        <div><p class="font-bold text-gray-900 dark:text-red-200">サーバーの削除</p><p class="text-sm text-red-700 dark:text-gray-400">この操作は取り消せません。すべてのデータが削除されます。</p></div>
-                        <button data-action="delete-server" class="mt-3 sm:mt-0 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300" ${server.status === 'running' ? 'disabled' : ''}>
-                            ${server.status === 'running' ? '停止してから削除してください' : 'このサーバーを削除する'}
-                        </button>
+                <div class="p-6">
+                    <h3 class="text-xl font-bold text-red-500 dark:text-red-400">危険ゾーン</h3>
+                    <div class="mt-6 bg-red-100 dark:bg-red-900/50 p-6 rounded-lg space-y-6">
+                        <div>
+                            <h4 class="font-bold text-gray-900 dark:text-red-200">サーバー再起動</h4>
+                            <p class="text-sm text-red-700 dark:text-gray-400 mb-3">サーバーを安全に再起動します。</p>
+                            <button data-action="restart-server" class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200">
+                                サーバー再起動
+                            </button>
+                        </div>
+                        <div class="border-t border-red-300 dark:border-red-500/30"></div>
+                        <div>
+                            <h4 class="font-bold text-gray-900 dark:text-red-200">サーバーの削除</h4>
+                            <p class="text-sm text-red-700 dark:text-gray-400 mb-3">この操作は取り消せません。すべてのデータが削除されます。</p>
+                            <button data-action="delete-server" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300" ${server.status === 'running' ? 'disabled' : ''}>
+                                ${server.status === 'running' ? '停止してから削除してください' : 'このサーバーを削除する'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
             break;
         default:
-            contextArea.innerHTML = '';
-            mainArea.innerHTML = `<p class="p-4 text-gray-500">不明なタブが選択されました: ${state.detailActiveTab}</p>`;
+            mainArea.innerHTML = `<p class="p-6 text-gray-500">不明なタブが選択されました: ${state.detailActiveTab}</p>`;
             break;
-    }
-};
-
-const updateDetailBasicSubTab = (server) => {
-    const contentArea = document.getElementById('detail-basic-content');
-    if (!contentArea) return;
-
-    if (state.detailBasicActiveSubTab === 'log') {
-        contentArea.innerHTML = `
-            <div class="flex flex-col h-full">
-                <div class="bg-gray-50 dark:bg-black p-3 rounded-md flex-1 overflow-y-auto custom-scrollbar">
-                    <pre id="server-log-output" class="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono">${(server.logs || []).join('\n')}</pre>
-                </div>
-                <div class="mt-4 flex gap-2">
-                    <input type="text" id="command-input" placeholder="コマンドを入力..." class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white p-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:border-primary focus:ring-1 focus:ring-primary transition duration-150">
-                    <button id="send-command-btn" class="bg-primary hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200">
-                        実行
-                    </button>
-                </div>
-            </div>
-        `;
-        const logOutputEl = contentArea.querySelector('#server-log-output');
-        if(logOutputEl) logOutputEl.parentElement.scrollTop = logOutputEl.parentElement.scrollHeight;
-
-    } else if (state.detailBasicActiveSubTab === 'props') {
-        contentArea.innerHTML = `
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">server.properties</h2>
-                <button data-action="save-properties" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">変更を保存</button>
-            </div>
-            ${renderPropertiesEditor(server)}
-        `;
     }
 };
 

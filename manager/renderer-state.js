@@ -19,8 +19,7 @@ const state = {
     physicalServerToDeleteId: null,
 
     // --- Detail View States ---
-    detailActiveTab: 'basic', // basic | properties | files
-    detailBasicActiveSubTab: 'log', // log | players | performance
+    detailActiveTab: 'console', // console | launch-config | properties | mods | plugins | players | danger
     
     // --- Physical Server Detail View States ---
     physicalServerDetailActiveTab: 'status', // status | servers | settings | logs

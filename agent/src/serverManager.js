@@ -7,7 +7,7 @@ const tar = require('tar');
 const unzipper = require('unzipper');
 const si = require('systeminformation');
 const { loadJsonSync, saveJsonSync, resolvePath } = require('./utils/storage');
-const { Message } = require('../../common/protocol');
+const { Message, ServerStatus } = require('../../common/protocol');
 
 const SERVER_CONFIG_FILENAME = 'nl-server_manager.json';
 const SCHEMA_VERSION = '1.0.0';
@@ -37,7 +37,7 @@ function getDefaultServerConfig(serverId, serverName, runtimeConfig = {}) {
             server_jar: 'server.jar',
             ...runtimeConfig
         },
-        status: 'stopped',
+        status: ServerStatus.STOPPED,
         logs: [],
         auto_start: false,
     };
@@ -264,39 +264,66 @@ function getJavaExecutablePath(javaInstallDir) {
 }
 
 /**
- * 管理下の全ゲームサーバーの設定を読み込む
+ * 管理下の全ゲームサーバーの設定を読み込み、プロセスの実在確認を行う
  * @param {string} serversDirectory - ゲームサーバーが格納されているディレクトリパス
  */
-function loadAllServers(serversDirectory) {
+async function loadAllServers(serversDirectory) {
     servers.clear();
+    runningProcesses.clear();
     const resolvedServersDir = resolvePath(serversDirectory);
+
     if (!fs.existsSync(resolvedServersDir)) {
         console.log(`[ServerManager] Servers directory not found: ${resolvedServersDir}. No servers loaded.`);
         return;
     }
 
+    // 最初にディスクからすべてのサーバー設定を読み込む
     const serverDirs = fs.readdirSync(resolvedServersDir, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory())
         .map(dirent => dirent.name);
 
     for (const serverId of serverDirs) {
-        const configPath = path.join(resolvedServersDir, serverId, SERVER_CONFIG_FILENAME);
-        // loadJsonSync already calls resolvePath, so we don't need to do it twice.
-        // However, for consistency and clarity in this file, we pass the unresolved path to loadJsonSync.
-        const config = loadJsonSync(path.join(serversDirectory, serverId, SERVER_CONFIG_FILENAME));
-        if (config) {
-            // サーバーIDがディレクトリ名と一致しているか確認
-            if (config.server_id !== serverId) {
-                console.warn(`[ServerManager] Server ID in ${configPath} (${config.server_id}) does not match directory name (${serverId}). Skipping.`);
-                continue;
-            }
+        const configPath = path.join(serversDirectory, serverId, SERVER_CONFIG_FILENAME);
+        const config = loadJsonSync(configPath);
+        if (config && config.server_id === serverId) {
             config.logs = config.logs || [];
+            // メモリ上の状態は、まずすべて 'stopped' として初期化
+            config.status = ServerStatus.STOPPED;
             servers.set(serverId, config);
         } else {
-            console.warn(`[ServerManager] Config file not found or failed to load for server: ${serverId}`);
+            console.warn(`[ServerManager] Config file not found or invalid for server: ${serverId}`);
         }
     }
-    console.log(`[ServerManager] Loaded ${servers.size} server(s).`);
+    console.log(`[ServerManager] Loaded ${servers.size} server(s) from disk.`);
+
+    // 次に、実行中のJavaプロセスをスキャンして状態を検証する
+    try {
+        const processes = await si.processes();
+        const javaProcesses = processes.list.filter(p => p.name.toLowerCase().includes('java'));
+
+        for (const proc of javaProcesses) {
+            // コマンドライン引数にサーバーディレクトリのパスが含まれているかチェック
+            const serverId = Array.from(servers.keys()).find(id => {
+                const resolvedDir = resolvePath(path.join(serversDirectory, id));
+                // CWD (Current Working Directory) を基準に判断するのが最も確実
+                return proc.cwd === resolvedDir;
+            });
+
+            if (serverId) {
+                const serverConfig = servers.get(serverId);
+                if (serverConfig) {
+                    console.log(`[ServerManager] Found running process (PID: ${proc.pid}) for server ${serverId}.`);
+                    serverConfig.status = ServerStatus.RUNNING;
+                    // プロセスオブジェクトを再現できないため、PIDのみを保持するなどの工夫が必要かもしれないが、
+                    // ここでは状態の整合性を取ることを主目的とする。
+                    // runningProcesses.set(serverId, proc); // 'proc' はspawnされた子プロセスオブジェクトではないため、直接の制御はできない
+                }
+            }
+        }
+        console.log('[ServerManager] Finished checking running server processes.');
+    } catch (error) {
+        console.error('[ServerManager] Failed to check running processes:', error);
+    }
 }
 
 /**
@@ -427,7 +454,9 @@ async function updateServer(serversDirectory, serverId, serverConfig) {
         console.warn(`[ServerManager] Updating server version is not supported. Ignoring versionId.`);
     }
 
-    const finalConfig = { ...existingConfig, ...restConfig, server_id: serverId };
+    // ネストされたruntimeオブジェクトを安全にマージする
+    const newRuntime = { ...(existingConfig.runtime || {}), ...(restConfig.runtime || {}) };
+    const finalConfig = { ...existingConfig, ...restConfig, runtime: newRuntime, server_id: serverId };
     if (!finalConfig.logs) finalConfig.logs = [];
 
     const { success, resolvedPath } = saveJsonSync(configPath, finalConfig);
@@ -515,21 +544,21 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
         throw error;
     }
 
-    const { java_path, java_version, jvm_args, server_jar } = serverConfig.runtime;
+    const { java_path, java_version, server_jar, min_memory, max_memory, custom_args } = serverConfig.runtime;
 
-    let javaExecutable = java_path;
+    let javaExecutable;
 
-    // 1. java_path が直接指定されていればそれを使う
-    if (javaExecutable) {
-        console.log(`[ServerManager] Using directly specified Java path: ${javaExecutable}`);
-        if (!fs.existsSync(javaExecutable)) {
-             throw new Error(`指定されたJavaパスが見つかりません: ${javaExecutable}`);
+    // 1. java_path が直接指定されており、'default'ではない場合、それを使う
+    if (java_path && java_path !== 'default') {
+        console.log(`[ServerManager] Using directly specified Java path: ${java_path}`);
+        if (!fs.existsSync(java_path)) {
+             throw new Error(`指定されたJavaパスが見つかりません: ${java_path}`);
         }
+        javaExecutable = java_path;
     }
     // 2. java_version が指定されていれば、インストール済みか確認して使う
     else if (java_version) {
         try {
-            // 防御的プログラミング: java_versionが数値で保存されている可能性を考慮し、文字列に変換する
             const javaInstallDir = getJavaInstallDir(String(java_version));
             javaExecutable = getJavaExecutablePath(javaInstallDir);
             console.log(`[ServerManager] Using Java from configured version ${java_version}: ${javaExecutable}`);
@@ -538,12 +567,26 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
             throw new Error(`要求されたJava ${java_version} はインストールされていません。物理サーバー詳細画面からインストールしてください。`);
         }
     }
-    // 3. どちらもなければエラー
+    // 3. どちらもなければ、システムのデフォルト'java'にフォールバック
     else {
-        throw new Error('サーバー設定でJavaのパスまたはバージョンが指定されていません。');
+        console.log(`[ServerManager] java_path or java_version not specified. Falling back to system default 'java'.`);
+        javaExecutable = 'java';
     }
 
-    const args = [...jvm_args, '-jar', server_jar, 'nogui'];
+    // JVM引数を動的に構築
+    const final_jvm_args = [];
+    if (min_memory) {
+        final_jvm_args.push(`-Xms${min_memory}M`);
+    }
+    if (max_memory) {
+        final_jvm_args.push(`-Xmx${max_memory}M`);
+    }
+    if (custom_args) {
+        // 文字列をスペースで分割して個別の引数として追加
+        final_jvm_args.push(...custom_args.split(' ').filter(arg => arg.length > 0));
+    }
+
+    const args = [...final_jvm_args, '-jar', server_jar, 'nogui'];
 
     console.log(`[ServerManager] Starting server ${serverId} in ${serverDir}`);
     console.log(`[ServerManager] Command: ${javaExecutable} ${args.join(' ')}`);
@@ -551,12 +594,12 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
     try {
         const process = spawn(javaExecutable, args, {
             cwd: serverDir,
-            detached: true,
+            // detached: true, // Agentの子プロセスとして管理するため、切り離さない
             stdio: 'pipe' // 'pipe' to control stdin/stdout/stderr
         });
 
         // 親プロセスが終了しても子プロセスが生き残るようにする
-        process.unref();
+        // process.unref(); // Agent終了時にサーバーも追従して終了させるためコメントアウト
 
         runningProcesses.set(serverId, process);
 
@@ -584,22 +627,29 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
         }, 5000); // 5秒ごとに収集
         metricsIntervals.set(serverId, intervalId);
 
-        // ステータスを 'running' に更新し、通知する
-        serverConfig.status = 'running';
-        onUpdate({ type: 'status_change', payload: 'running' });
+        // ステータスを 'STARTING' に更新し、通知する
+        serverConfig.status = ServerStatus.STARTING;
+        onUpdate({ type: 'status_change', payload: ServerStatus.STARTING });
 
-        process.stdout.on('data', (data) => {
-            const log = data.toString();
+        const onLog = (log) => {
             console.log(`[${serverId}/stdout] ${log.trim()}`);
             serverConfig.logs.push(log);
             onUpdate({ type: 'log', payload: log });
+
+            // サーバー起動完了を検知
+            if (serverConfig.status === ServerStatus.STARTING && log.includes('Done')) {
+                console.log(`[ServerManager] Server ${serverId} has started successfully.`);
+                serverConfig.status = ServerStatus.RUNNING;
+                onUpdate({ type: 'status_change', payload: ServerStatus.RUNNING });
+            }
+        };
+
+        process.stdout.on('data', (data) => {
+            onLog(data.toString());
         });
 
         process.stderr.on('data', (data) => {
-            const log = data.toString();
-            console.error(`[${serverId}/stderr] ${log.trim()}`);
-            serverConfig.logs.push(log);
-            onUpdate({ type: 'log', payload: log });
+            onLog(data.toString());
         });
 
         process.on('close', (code) => {
@@ -610,8 +660,8 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
                 metricsIntervals.delete(serverId);
             }
             runningProcesses.delete(serverId);
-            serverConfig.status = 'stopped';
-            onUpdate({ type: 'status_change', payload: 'stopped' });
+            serverConfig.status = ServerStatus.STOPPED;
+            onUpdate({ type: 'status_change', payload: ServerStatus.STOPPED });
         });
         
         process.on('error', (err) => {
@@ -631,10 +681,17 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
  * @param {string} serverId
  * @returns {Promise<boolean>}
  */
-async function stopServer(serverId) {
+async function stopServer(serverId, onUpdate = () => {}) {
     const process = runningProcesses.get(serverId);
+    const serverConfig = servers.get(serverId);
+
     if (!process) {
         console.warn(`[ServerManager] stopServer: Server ${serverId} is not running.`);
+        // 念のためステータスを更新
+        if (serverConfig && serverConfig.status !== ServerStatus.STOPPED) {
+            serverConfig.status = ServerStatus.STOPPED;
+            onUpdate({ type: 'status_change', payload: ServerStatus.STOPPED });
+        }
         // メトリクス収集が残っていたら停止
         if (metricsIntervals.has(serverId)) {
             clearInterval(metricsIntervals.get(serverId));
@@ -651,14 +708,16 @@ async function stopServer(serverId) {
         metricsIntervals.delete(serverId);
     }
 
+    // ステータスを 'STOPPING' に更新
+    if (serverConfig) {
+        serverConfig.status = ServerStatus.STOPPING;
+        onUpdate({ type: 'status_change', payload: ServerStatus.STOPPING });
+    }
+
     try {
         // 'stop'コマンドを標準入力に書き込む
         process.stdin.write('stop\n');
         
-        // プロセスが正常に終了するのを待つ。ここでは単純化のため、コマンド送信後に即座にMapから削除するが、
-        // 本来は'close'イベントで削除するのが望ましい。
-        // runningProcesses.delete(serverId); // 'close'イベントハンドラで削除される
-
         // TODO: タイムアウトを設け、指定時間内に終了しない場合は process.kill() を呼ぶ
         
         return true;

@@ -166,7 +166,8 @@ wss.on('connection', (ws) => {
             const serversDirectory = getSettings().servers_directory;
             const result = await updateServer(serversDirectory, serverId, config);
             if (result && result.config) {
-                sendResponse(ws, requestId, type, true, { ...result.config, path: result.path });
+                // 更新後の完全な設定オブジェクトをペイロードに含める
+                sendResponse(ws, requestId, type, true, { serverId, config: result.config });
                 broadcastServerListUpdate();
             } else {
                 sendResponse(ws, requestId, type, false, { serverId }, 'Failed to update server.');
@@ -215,7 +216,7 @@ wss.on('connection', (ws) => {
                     await startServer(serversDirectory, serverId, ws, onUpdate);
                     sendResponse(ws, requestId, type, true, { serverId, action: 'start' });
                 } else if (action === 'stop') {
-                    await stopServer(serverId);
+                    await stopServer(serverId, onUpdate);
                     sendResponse(ws, requestId, type, true, { serverId, action: 'stop' });
                 } else {
                     throw new Error(`Unknown server control action: ${action}`);
