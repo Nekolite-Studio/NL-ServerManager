@@ -248,9 +248,23 @@
         </div>
     </div>
 
-    <script src="renderer-state.js"></script>
-    <script src="renderer-ui.js"></script>
-    <script src="renderer.js"></script>
+    <!-- EULA同意モーダル -->
+    <div id="eula-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-2xl">
+            <h3 class="text-xl leading-6 font-bold text-gray-900 dark:text-white mb-4">Minecraft EULAへの同意が必要です</h3>
+            <div class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                <p>Minecraftサーバーを初めて起動するには、Mojang Studiosの<a href="https://account.mojang.com/documents/minecraft_eula" target="_blank" class="text-primary hover:underline">エンドユーザーライセンス契約(EULA)</a>に同意する必要があります。</p>
+                <p class="mt-4">以下の内容を確認し、同意する場合は「同意してサーバーを起動」ボタンを押してください。</p>
+            </div>
+            <div class="mt-4 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md p-4 max-h-60 overflow-y-auto custom-scrollbar">
+                <pre id="eula-content" class="text-xs whitespace-pre-wrap font-mono"></pre>
+            </div>
+            <div class="mt-6 flex justify-end gap-4">
+                <button id="cancel-eula-btn" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+                <button id="confirm-eula-btn" type="button" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">同意してサーバーを起動</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Javaインストールモーダル -->
     <div id="java-install-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
@@ -281,5 +295,8 @@
             </div>
         </div>
     </div>
+    <script src="renderer-state.js"></script>
+    <script src="renderer-ui.js"></script>
+    <script src="renderer.js"></script>
 </body>
 </html>

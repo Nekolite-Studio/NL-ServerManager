@@ -74,6 +74,7 @@ graph TD
 -   **`index.js` (通信ハブ):** `manager`からのWebSocket接続を待ち受け、受信したメッセージを解釈し、`serverManager`に処理を委譲する司令塔。
 -   **`serverManager.js` (コアロジック):** Minecraftサーバーのライフサイクル管理に関する全ての物理的な操作を担当する。
     -   サーバーファイルの作成、読み取り、削除。
+    -   `eula.txt`の同意状態のチェックと更新。
     -   `child_process.spawn`によるJavaプロセスの起動と停止。
     -   実行中プロセスの標準出力/エラー出力を監視し、ログを収集する。
 -   **`settingsManager.js` (設定管理):** `agent`自体の設定（APIポート、サーバーディレクトリなど）を管理する。

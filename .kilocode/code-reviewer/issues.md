@@ -1,67 +1,84 @@
-# コード品質レビュー: 問題点リスト
+# コード品質レビュー指摘事項
 
-## 1. 全体的な一貫性の欠如
+このドキュメントは、Server Managerコードベースの潜在的な品質問題点をまとめたものです。
 
-### 1.1. API命名規則の不統一 (Inconsistent Naming)
+## 1. プロトコル定義の一貫性の欠如 (マジックストリングの使用)
 
-- **問題点**: Manager-Agent間のWebSocketメッセージタイプや、`main`プロセス-`renderer`プロセス間のIPCチャンネル名に一貫性がありません。
-- **例**:
-    - `create-server` (IPC) vs `create_server` (WebSocket)
-    - `delete-agent` (IPC) vs `deleteServer` (WebSocket)
-    - `get-agent-system-info` と `systemInfoResponse`
-- **影響**: コードの可読性と保守性を低下させ、開発者がAPIを推測しにくくなります。
-- **ファイル**:
-    - [`manager/main.js`](manager/main.js)
-    - [`manager/preload.js`](manager/preload.js)
-    - [`agent/index.js`](agent/index.js)
+**重要度:** 高
 
-### 1.2. ネットワークライブラリの混在 (Mixed Libraries)
+**問題:** `manager`と`agent`間の通信において、[`common/protocol.js`](./common/protocol.js:6)で定義されたメッセージ定数を使わず、ハードコードされた文字列（マジックストリング）が使用されている箇所が複数存在します。これにより、プロトコル仕様の変更時に追跡が困難になり、バグの温床となります。
 
-- **問題点**: Managerの`main`プロセス内で、ネットワークリクエストに`net`モジュール、`axios`、`ws`が混在しています。
-- **例**:
-    - Minecraftバージョン取得: [`net`](manager/main.js:324)
-    - Adoptium APIからのJava情報取得: [`axios`](manager/main.js:289)
-    - Agent通信: [`ws`](manager/main.js:81)
-- **影響**: 依存関係が不必要に増加し、エラーハンドリングや設定（タイムアウト、プロキシ）の管理が複雑になります。
-- **ファイル**: [`manager/main.js`](manager/main.js)
+**該当箇所:**
 
-### 1.3. エラー応答形式の不統一 (Inconsistent Error Responses)
+- **ファイル:** [`manager/main.js`](./manager/main.js:109) (L109-135)
+  - **説明:** `ws.on('message', ...)`内の`switch`文で、`Message.SERVER_LIST_UPDATE`などの定数を使用せず、`'server-list-update'`のような文字列リテラルで比較しています。
+  - **コード (例):**
+    ```javascript
+// 修正前
+switch(type) {
+    case Message.SERVER_LIST_UPDATE: // 正しいが、他のcaseが文字列
+        // ...
+    case 'progress-update': // 修正が必要
+        // ...
+}
+    ```
 
-- **問題点**: エラー発生時のクライアントへの通知形式が、処理によって異なります。
-- **例**:
-    - `server_creation_failed`イベントでは `{ agentId, error }` という形式。
-    - `getJavaDownloadInfo`の失敗時は `{ success: false, error }` という形式。
-- **影響**: クライアント側でのエラーハンドリングが複雑化し、脆弱になります。
-- **ファイル**:
-    - [`manager/main.js`](manager/main.js:113)
-    - [`manager/main.js`](manager/main.js:311)
+- **ファイル:** [`agent/index.js`](./agent/index.js:138) (L138)
+  - **説明:** Managerからのメッセージを処理する`switch`文で、`Message.GET_METRICS`を使用せず、`'get-metrics'`という文字列が使用されています。
+  - **コード (例):**
+    ```javascript
+// 修正前
+switch (type) {
+  case 'get-metrics': // Message.GET_METRICS を使うべき
+    ws.send(JSON.stringify({ type: 'metrics-data', payload: getMetrics() }));
+    break;
+}
+    ```
 
-## 2. 冗長性と責務分担の問題
+**推奨される修正:**
+全てのメッセージタイプ比較を[`common/protocol.js`](./common/protocol.js:6)の`Message`オブジェクト定数を使用するように統一してください。
 
-### 2.1. 巨大なレンダラープロセス (God Object in Renderer)
+## 2. エラーハンドリングの不備 (UIへの通知漏れ)
 
-- **問題点**: [`manager/renderer.js`](manager/renderer.js) が600行を超えており、UI描画、状態管理、イベントリスナー、ビジネスロジックが密結合しています。
-- **影響**: ファイルの見通しが悪く、修正や機能追加が困難です。単一責任の原則に違反しています。
-- **ファイル**: [`manager/renderer.js`](manager/renderer.js)
+**重要度:** 中
 
-### 2.2. 汎用IPCチャネルの冗長性 (Redundant IPC Channel)
+**問題:** Agent側で発生した重要なフォールバック処理やエラーが、UI（Manager側）に適切に通知されていません。これにより、ユーザーはシステムの実際の動作を誤解する可能性があります。
 
-- **問題点**: [`manager/preload.js`](manager/preload.js:30) で定義されている`sendJsonMessage`は、より具体的な`proxyToServer`で代替可能な汎用的なメッセージング関数であり、現在は`update_properties`のためだけに使用されています。
-- **影響**: APIの意図が不明確になり、冗長なコードパスを生み出します。
-- **ファイル**:
-    - [`manager/preload.js`](manager/preload.js:30)
-    - [`manager/renderer.js`](manager/renderer.js:141)
+**該当箇所:**
 
-### 2.3. 作成と更新の責務が不明確 (Unclear Responsibility in `updateServer`)
+- **ファイル:** [`agent/src/serverManager.js`](./agent/src/serverManager.js:442) (L442-450)
+  - **説明:** `startServer`関数で、指定されたJavaバージョンが見つからずにシステムのデフォルト`java`にフォールバックする際、その事実がコンソールに警告として出力されるだけで、操作をリクエストしたユーザーには通知されません。
+  - **影響:** ユーザーは、意図しないJavaバージョンでサーバーが起動していることに気づけません。
 
-- **問題点**: [`agent/src/serverManager.js`](agent/src/serverManager.js:249) の `updateServer` 関数が、`serverId`の有無によって新規作成と更新の両方を処理しており、責務が曖昧です。
-- **影響**: 関数名から挙動が予測しにくく、特に新規作成時の副作用（ディレクトリ作成、ファイルダウンロード）が隠蔽されています。
-- **ファイル**: [`agent/src/serverManager.js`](agent/src/serverManager.js:249)
+**推奨される修正:**
+このような重要なフォールバックが発生した場合、`OPERATION_RESULT`または別の通知メッセージタイプを用いて、Managerに状況を通知するべきです。
 
-## 3. 危険なエラーハンドリング
+## 3. データコントラクトの不備 (未実装の機能)
 
-### 3.1. 設定ファイルの破壊的なクリア処理 (Destructive Config Clearing)
+**重要度:** 中
 
-- **問題点**: [`manager/src/storeManager.js`](manager/src/storeManager.js:41-44) は、`electron-store`のスキーマ検証に失敗した場合、ユーザーに通知なく全ての永続化データを`store.clear()`で削除します。
-- **影響**: アプリケーションのアップデートなどでスキーマが変更された場合に、ユーザーが設定したAgent接続情報などがすべて失われる可能性があります。これはデータ損失につながる重大な欠陥です。
-- **ファイル**: [`manager/src/storeManager.js`](manager/src/storeManager.js:41-44)
+**問題:** プロトコルとして定義されているにも関わらず、重要な機能がダミーデータまたは未実装のままになっています。「機能第一」の観点から、アプリケーションのコアな価値を提供する機能が欠落している状態です。
+
+**該当箇所:**
+
+- **ファイル:** [`agent/index.js`](./agent/index.js:47) (L47-L58)
+  - **説明:** `getMetrics`関数が返すCPU、RAM、Disk使用率などのメトリクスが、全て`Math.random()`によるダミーデータとなっています。
+  - **影響:** ユーザーは物理サーバーの実際の負荷を監視できず、アプリケーションの重要な機能が機能不全に陥っています。
+
+**推奨される修正:**
+`os`モジュールや`systeminformation`のようなライブラリを使用して、実際のシステムメトリクスを取得・送信するように実装してください。
+
+## 4. 冗長なロジック (DRY原則違反)
+
+**重要度:** 低
+
+**問題:** UIロジックと状態管理において、類似した処理や責任が複数の箇所に分散しており、コードの重複が見られます。
+
+**該当箇所:**
+
+- **ファイル:** [`manager/renderer.js`](./manager/renderer.js:12) (L12, L578)
+  - **説明:** 物理サーバーのメトリクスを取得するためのポーリングを開始/停止するロジック (`startGlobalMetricsLoop`, `stopGlobalMetricsLoop`)が、`updateView`関数からビューの状態に応じて呼び出されています。この依存関係は暗黙的であり、UIの描画とバックグラウンドのポーリング制御が密結合しています。
+  - **影響:** 将来的にビューの種類が増えたり、ポーリングの条件が変更されたりした場合に、修正が煩雑になる可能性があります。
+
+**推奨される修正:**
+`updateView`関数は純粋にUIの表示/非表示に専念させ、ポーリングの制御はナビゲーションイベントのハンドリングなど、ビューが切り替わる根本的な原因となる場所で明示的に行うべきです。

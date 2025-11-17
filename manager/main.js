@@ -4,10 +4,12 @@ const WebSocket = require('ws');
 const axios = require('axios'); // axiosをインポート
 const { v4: uuidv4 } = require('uuid');
 const { getAgents, setAgents, getWindowBounds, setWindowBounds } = require('./src/storeManager');
+const { Message } = require('../common/protocol');
 
 // --- Agent Management ---
 
 const agents = new Map(); // インメモリのAgent接続状態を管理
+const pendingOperations = new Map(); // Agentへのリクエストを追跡する
 let mainWindow;
 
 function sendToRenderer(channel, data) {
@@ -92,28 +94,62 @@ function connectToAgent(id) {
             agent.reconnectInterval = null;
         }
         broadcastAgentStatus(id);
-        ws.send(JSON.stringify({ type: 'getSystemInfo' }));
+        ws.send(JSON.stringify({ type: Message.GET_SYSTEM_INFO }));
     });
 
     ws.on('message', (data) => {
         try {
             const parsedData = JSON.parse(data.toString());
-            if (parsedData.type !== 'metricsData') {
+            const { type, requestId, payload, operation } = parsedData;
+
+            if (type !== Message.METRICS_UPDATE && type !== Message.METRICS_DATA) {
                  console.log(`Data from ${agent.config.alias}:`, parsedData);
             }
-            // Agentからのサーバーリスト更新を中継
-            if (parsedData.type === 'server_list_update') {
-               sendToRenderer('server_list_update', { agentId: id, servers: parsedData.payload });
-               console.log(`[Agent Op] Server list update received from agent ${agent.config.alias}.`);
-            } else if (parsedData.payload && parsedData.payload.path) {
-               // パス情報を含むイベントをログに出力
-               console.log(`[Agent Op] Type: ${parsedData.type}, Path: ${parsedData.payload.path}`);
+
+            switch(type) {
+                case Message.METRICS_UPDATE:
+                case Message.METRICS_DATA:
+                    sendToRenderer(Message.METRICS_DATA, { agentId: id, payload });
+                    break;
+                case Message.SERVER_LIST_UPDATE:
+                    sendToRenderer(Message.SERVER_LIST_UPDATE, { agentId: id, servers: payload });
+                    break;
+                case Message.PROGRESS_UPDATE:
+                    sendToRenderer(Message.PROGRESS_UPDATE, { agentId: id, requestId, operation, payload });
+                    break;
+                case Message.OPERATION_RESULT:
+                    if (pendingOperations.has(requestId)) {
+                        const { resolve, reject } = pendingOperations.get(requestId);
+                        if (parsedData.success) {
+                            resolve(payload);
+                        } else {
+                            // reject(new Error(parsedData.error?.message || 'Operation failed'));
+                            // ↑ このrejectがコンソールにキャッチされないエラーとして表示される原因。
+                            // UIへの通知は下のsendToRendererで行われるため、ここでは単に失敗したことをログに出す程度でよい。
+                            console.log(`Operation ${operation} (${requestId}) failed: ${parsedData.error?.message || 'Operation failed'}`);
+                        }
+                        pendingOperations.delete(requestId);
+                    }
+                    // 完了/失敗をUIにも通知
+                    sendToRenderer(Message.OPERATION_RESULT, { agentId: id, requestId, operation, ...parsedData });
+                    break;
+                case Message.SERVER_UPDATE:
+                     sendToRenderer(Message.SERVER_UPDATE, { agentId: id, payload: payload });
+                     break;
+                case Message.NOTIFY_WARN:
+                    sendToRenderer(Message.NOTIFY_WARN, { agentId: id, payload: payload });
+                    break;
+                case Message.REQUIRE_EULA_AGREEMENT:
+                    sendToRenderer('require-eula-agreement', { agentId: id, requestId, payload });
+                    break;
+                case Message.SYSTEM_INFO_RESPONSE:
+                    sendToRenderer('agent-system-info', { agentId: id, payload: payload });
+                    break;
+                default:
+                    // その他のメッセージタイプもRendererに転送
+                    sendToRenderer('agent-data', { agentId: id, data: parsedData });
             }
 
-            if (parsedData.type === 'server_creation_failed') {
-               sendToRenderer('server_creation_failed', { agentId: id, error: parsedData.payload.error });
-            }
-            sendToRenderer('agent-data', { agentId: id, data: parsedData });
         } catch (error) {
             console.error(`Error parsing JSON from agent ${agent.config.alias}:`, error);
             addLog(id, `Error parsing data: ${error.message}`);
@@ -126,6 +162,23 @@ function connectToAgent(id) {
         agent.status = 'Disconnected';
         agent.ws = null;
         broadcastAgentStatus(id);
+
+        // このAgentに関連する保留中の操作を失敗させる
+        for (const [requestId, op] of pendingOperations.entries()) {
+            if (op.agentId === id) {
+                const error = new Error('Agent disconnected during operation.');
+                op.reject(error);
+                sendToRenderer('operation-result', {
+                    agentId: id,
+                    requestId,
+                    operation: op.operation,
+                    success: false,
+                    error: { message: error.message }
+                });
+                pendingOperations.delete(requestId);
+            }
+        }
+
         if (!agent.reconnectInterval) {
             agent.reconnectInterval = setTimeout(() => connectToAgent(id), 5000);
         }
@@ -213,7 +266,7 @@ app.whenReady().then(() => {
     console.log('Received request for all servers from renderer.');
     for (const agent of agents.values()) {
         if (agent.ws && agent.ws.readyState === WebSocket.OPEN) {
-            agent.ws.send(JSON.stringify({ type: 'getAllServers' }));
+            agent.ws.send(JSON.stringify({ type: Message.GET_ALL_SERVERS }));
         }
     }
   });
@@ -254,29 +307,36 @@ app.whenReady().then(() => {
     deleteAgent(agentId);
   });
 
-  ipcMain.on('create-server', (event, { hostId, versionId }) => {
-    console.log(`Received request to create server on host ${hostId} with version ${versionId}`);
-    const agent = getAgent(hostId);
-    if (agent && agent.ws && agent.ws.readyState === WebSocket.OPEN) {
-        agent.ws.send(JSON.stringify({
-            type: 'create_server',
-            payload: { versionId }
-        }));
-    } else {
-        console.log(`Cannot create server: Agent ${hostId} is not connected.`);
-        sendToRenderer('server_creation_failed', { agentId: hostId, error: 'Agent is not connected.' });
-    }
-  });
-
   // Agentにメッセージをプロキシする汎用ハンドラ
   ipcMain.on('proxy-to-agent', (event, { agentId, message }) => {
       const agent = getAgent(agentId);
       if (agent && agent.ws && agent.ws.readyState === WebSocket.OPEN) {
-          agent.ws.send(JSON.stringify(message));
+          const requestId = uuidv4();
+          const messageWithId = { ...message, requestId };
+          agent.ws.send(JSON.stringify(messageWithId));
+          
+          // 操作を追跡マップに追加
+          pendingOperations.set(requestId, {
+              agentId,
+              operation: message.type,
+              // このPromiseはタイムアウトや明示的な応答で使用できる
+              resolve: () => {},
+              reject: (err) => { console.error(`Operation ${message.type} (${requestId}) failed:`, err); }
+          });
+
       } else {
           console.log(`Cannot proxy message: Agent ${agentId} is not connected.`);
+          sendToRenderer('operation-result', {
+              agentId,
+              requestId: null,
+              operation: message.type,
+              success: false,
+              error: { message: 'Agent is not connected.' }
+          });
       }
   });
+
+  // create-server と install-java は proxy-to-agent を使うようにUI側で変更するため、古いハンドラは削除
 
   // Adoptium APIからJavaのダウンロード情報を取得するハンドラー
   ipcMain.handle('getJavaDownloadInfo', async (event, { feature_version, os, arch }) => {
@@ -312,43 +372,69 @@ app.whenReady().then(() => {
     }
   });
 
+  // --- Java Version Detection ---
+  const MANIFEST_URL_V2 = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+
+  /**
+   * リリース日時に基づいてJavaバージョンを判定するフォールバック関数
+   * @param {Date} date
+   * @returns {number}
+   */
+  function detectJavaByDate(date) {
+      if (date < new Date("2021-06-08T00:00:00Z")) return 8;   // 1.16.5まで
+      if (date < new Date("2021-11-30T00:00:00Z")) return 16;  // 1.17.x
+      if (date < new Date("2024-04-23T00:00:00Z")) return 17;  // 1.18〜1.20.4
+      return 21;                                               // 1.20.5+
+  }
+
+  /**
+   * 指定されたMinecraftバージョンに必要なJavaのメジャーバージョンを取得する
+   * @param {string} mcVersion
+   * @returns {Promise<number>}
+   */
+  async function getRequiredJavaVersion(mcVersion) {
+      const manifest = (await axios.get(MANIFEST_URL_V2)).data;
+      const entry = manifest.versions.find(v => v.id === mcVersion);
+      if (!entry) throw new Error(`Version not found in manifest: ${mcVersion}`);
+
+      const versionJson = (await axios.get(entry.url)).data;
+
+      if (versionJson.javaVersion && versionJson.javaVersion.majorVersion) {
+          return versionJson.javaVersion.majorVersion;
+      }
+
+      const releaseTime = new Date(entry.releaseTime);
+      return detectJavaByDate(releaseTime);
+  }
+
+  // Minecraftバージョンから要求Javaバージョンを取得するIPCハンドラ
+  ipcMain.handle('get-required-java-version', async (event, { mcVersion }) => {
+      try {
+          const javaVersion = await getRequiredJavaVersion(mcVersion);
+          return { success: true, javaVersion };
+      } catch (error) {
+          console.error(`Error fetching required Java version for ${mcVersion}:`, error);
+          return { success: false, error: error.message };
+      }
+  });
+
+
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 
   // --- Minecraft Version Handling ---
 
-  // Mojangのバージョンマニフェストを取得する関数
+  // Mojangのバージョンマニフェストを取得する関数 (axiosを使用)
   async function fetchMinecraftVersions() {
-    return new Promise((resolve, reject) => {
-      const request = net.request({
-        method: 'GET',
-        protocol: 'https:',
-        hostname: 'launchermeta.mojang.com',
-        path: '/mc/game/version_manifest.json'
-      });
-
-      let body = '';
-      request.on('response', (response) => {
-        response.on('data', (chunk) => {
-          body += chunk;
-        });
-        response.on('end', () => {
-          try {
-            const parsedJson = JSON.parse(body);
-            resolve(parsedJson.versions);
-          } catch (error) {
-            reject(`Failed to parse JSON: ${error.message}`);
-          }
-        });
-      });
-
-      request.on('error', (error) => {
-        reject(`Request failed: ${error.message}`);
-      });
-
-      request.end();
-    });
+    try {
+      const response = await axios.get('https://launchermeta.mojang.com/mc/game/version_manifest.json');
+      return response.data.versions;
+    } catch (error) {
+      console.error('Failed to fetch Minecraft versions with axios:', error);
+      // エラーを呼び出し元に伝播させる
+      throw new Error(error.response?.data?.error || error.message || 'Unknown error fetching versions');
+    }
   }
 
   // レンダラからのバージョン取得要求をハンドル

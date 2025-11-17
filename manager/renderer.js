@@ -1,38 +1,44 @@
 // manager/renderer.js
-// メインのイベントリスナーと処理
-// このファイルは renderer-state.js と renderer-ui.js の後に読み込まれる必要があります。
 
-let metricsInterval = null;
+// このファイルはアプリケーションのエントリーポイントとして機能します。
+// 1. モジュールの初期化
+// 2. IPCイベントリスナーの設定
+// 3. DOMイベントリスナーの設定
+// 4. イベントに応じてstateの更新やUIの再描画を指示する
+
+
+
+// --- Metrics Polling ---
+let metricsIntervalId = null;
+
+function fetchAllMetrics() {
+    console.log('[Metrics] Fetching all metrics...');
+    for (const agent of state.physicalServers.values()) {
+        if (agent.status === 'Connected') {
+            window.electronAPI.proxyToAgent(agent.id, { type: 'get-metrics' });
+        }
+    }
+}
 
 function startGlobalMetricsLoop() {
-    stopGlobalMetricsLoop(); // Clear any existing interval first
-    console.log('Starting global metrics loop...');
-    metricsInterval = setInterval(() => {
-        if (state.physicalServers.size > 0) {
-            for (const agentId of state.physicalServers.keys()) {
-                const agent = state.physicalServers.get(agentId);
-                if (agent.status === 'Connected') {
-                    window.electronAPI.requestAgentMetrics(agentId);
-                }
-            }
-        }
-    }, 3000);
+    if (metricsIntervalId) return; // すでに開始されている場合は何もしない
+    console.log('[Metrics] Starting global metrics loop.');
+    fetchAllMetrics(); // ループ開始時に即時実行
+    metricsIntervalId = setInterval(fetchAllMetrics, 5000); // 5秒ごとに実行
 }
 
 function stopGlobalMetricsLoop() {
-    if (metricsInterval) {
-        console.log('Stopping global metrics loop.');
-        clearInterval(metricsInterval);
-        metricsInterval = null;
+    if (metricsIntervalId) {
+        console.log('[Metrics] Stopping global metrics loop.');
+        clearInterval(metricsIntervalId);
+        metricsIntervalId = null;
     }
 }
 
 
 document.addEventListener('DOMContentLoaded', () => {
-            
-    // --- DOM要素の取得 (グローバル変数への代入) ---
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const appContainer = document.getElementById('app');
+    // --- 初期化 ---
+    // DOM要素をグローバル変数に代入
     serverListView = document.getElementById('server-list-view');
     physicalServerListView = document.getElementById('physical-server-list-view');
     serverDetailView = document.getElementById('server-detail-view');
@@ -40,573 +46,100 @@ document.addEventListener('DOMContentLoaded', () => {
     serverListContainer = document.getElementById('server-list');
     navGameServers = document.getElementById('nav-game-servers');
     navPhysicalServers = document.getElementById('nav-physical-servers');
-
-    // このファイル内でのみ使用するDOM要素
-    const addServerBtn = document.getElementById('add-server-btn');
-    const addAgentBtn = document.getElementById('add-agent-btn');
-    const deleteModal = document.getElementById('delete-modal');
-    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
-    const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
-    const deletingServerNameSpan = document.getElementById('deleting-server-name');
-    const darkModeToggle = document.getElementById('dark-mode-toggle');
-    const sunIcon = document.getElementById('sun-icon');
-    const moonIcon = document.getElementById('moon-icon');
-    const createServerModal = document.getElementById('create-server-modal');
-    const confirmCreateServerBtn = document.getElementById('confirm-create-server-btn');
-    const cancelCreateServerBtn = document.getElementById('cancel-create-server-btn');
-    const javaInstallOverlay = document.getElementById('java-install-overlay');
-    const javaInstallCancelBtn = document.getElementById('java-install-cancel-btn');
-    const javaInstallConfirmBtn = document.getElementById('java-install-confirm-btn');
-    const javaDownloadList = document.getElementById('java-download-list');
-    const javaInstallProgressBar = document.getElementById('java-install-progress-bar');
-    const javaInstallStatusText = document.getElementById('java-install-status-text');
-
-    // --- 画面切り替え関数 ---
-    const showListView = () => { 
-        stopGlobalMetricsLoop();
-        state.currentView = 'list';
-        state.selectedServerId = null;
-        window.electronAPI.requestAllServers(); // サーバーリストを要求する
-        updateView();
-    };
-    const showDetailView = (serverId) => { 
-        stopGlobalMetricsLoop();
-        state.currentView = 'detail'; 
-        state.selectedServerId = serverId; 
-        state.detailActiveTab = 'basic'; 
-        state.detailBasicActiveSubTab = 'log'; 
-        updateView(); 
-    };
-    const showPhysicalListView = () => { 
-        startGlobalMetricsLoop();
-        state.currentView = 'physical'; 
-        state.selectedPhysicalServerId = null; 
-        updateView(); 
-    };
-    const showPhysicalDetailView = (agentId) => {
-        startGlobalMetricsLoop(); // Ensure loop is running
-        state.currentView = 'physical-detail';
-        state.selectedPhysicalServerId = agentId;
-        state.physicalServerDetailActiveTab = 'status';
-        updateView();
-    };
     
-    // --- イベントハンドラ (v5で更新) ---
-    const toggleServerStatus = (serverId) => {
-        const server = state.servers.find(s => s.server_id === serverId);
-        if (server) {
-            
-            // Agentにメッセージを送信する
-            const action = server.status === 'running' ? 'stop' : 'start';
-            window.electronAPI.proxyToServer(server.hostId, {
-                type: 'control_server',
-                payload: {
-                    serverId: server.server_id,
-                    action: action,
-                }
-            });
-            // ダミーロジックは削除。UIの更新はAgentからのレスポンス(server_list_update)によって行われる
-        }
-    };
-    
-    const updateServerData = (serverId, field, value) => {
-        const server = state.servers.find(s => s.server_id === serverId);
-        if (server && (field === 'name' || field === 'memo')) {
-            // This needs to be sent to the agent to be persisted
-            console.log(`Updating ${field} for server ${serverId} to ${value}`);
-            // server[field] = value;
-            if(state.currentView === 'list') {
-                renderServerList();
-            } else if (state.currentView === 'detail' && field === 'memo') {
-                updateDetailView();
-            }
-        }
-    };
-    
-    const saveProperties = (serverId, button) => {
-        const server = state.servers.find(s => s.server_id === serverId);
-        if (!server) return;
-        const editor = document.getElementById('properties-editor');
-        const newProperties = {};
-        Object.keys(server.properties).forEach(key => {
-            const input = editor.querySelector(`#${key}`);
-            if(input) {
-                if (input.type === 'checkbox') newProperties[key] = input.checked;
-                else if (input.type === 'number') newProperties[key] = parseFloat(input.value) || 0;
-                else newProperties[key] = input.value;
-            }
-        });
-        server.properties = newProperties;
+    // --- IPCリスナー (Mainプロセスからのデータ受信) ---
 
-        window.electronAPI.sendJsonMessage({
-            type: 'update_properties',
-            payload: { serverId: server.id, properties: newProperties }
-        });
-
-        button.textContent = '保存しました！';
-        setTimeout(() => { button.textContent = '変更を保存'; }, 2000);
-    };
-
-    // --- メインのイベントリスナー (v6で更新) ---
-    navGameServers.addEventListener('click', (e) => { e.preventDefault(); showListView(); });
-    navPhysicalServers.addEventListener('click', (e) => { e.preventDefault(); showPhysicalListView(); });
-
-    addServerBtn.addEventListener('click', () => {
-        const createServerModal = document.getElementById('create-server-modal');
-        const hostSelect = document.getElementById('host-select');
-
-        // ホスト選択のオプションをクリアして再生成
-        hostSelect.innerHTML = '';
-        const onlineAgents = Array.from(state.physicalServers.values()).filter(p => p.status === 'Connected');
-
-        if (onlineAgents.length === 0) {
-            hostSelect.innerHTML = '<option value="">利用可能なホストがありません</option>';
-            hostSelect.disabled = true;
-            document.getElementById('confirm-create-server-btn').disabled = true;
-        } else {
-            onlineAgents.forEach(agent => {
-                const option = document.createElement('option');
-                option.value = agent.id;
-                option.textContent = `${agent.config.alias} (${agent.config.ip})`;
-                hostSelect.appendChild(option);
-            });
-            hostSelect.disabled = false;
-            document.getElementById('confirm-create-server-btn').disabled = false;
-        }
-        
-        // バージョンリストの取得を要求
-        document.getElementById('version-select').innerHTML = '<option>バージョンを読み込み中...</option>';
-        window.electronAPI.getMinecraftVersions();
-
-        createServerModal.classList.remove('hidden');
-    });
-
-    addAgentBtn.addEventListener('click', () => {
-        const newPort = 8080 + state.physicalServers.size;
-        window.electronAPI.addAgent({
-            ip: '127.0.0.1',
-            port: newPort,
-            alias: `New Agent ${state.physicalServers.size + 1}`
-        });
-    });
-
-    // --- 新規サーバー作成モーダル ---
-    cancelCreateServerBtn.addEventListener('click', () => {
-        createServerModal.classList.add('hidden');
-    });
-
-    confirmCreateServerBtn.addEventListener('click', () => {
-        const hostId = document.getElementById('host-select').value;
-        const versionId = document.getElementById('version-select').value;
-
-        if (!hostId || !versionId) {
-            showNotification('ホストマシンまたはバージョンが選択されていません。', 'error');
-            return;
-        }
-
-        // mainプロセスにサーバー作成を要求
-        window.electronAPI.createServer({ hostId, versionId });
-
-        // mainからの応答を待ってUIを更新する
-        showNotification(`新規サーバーの作成をホストに要求しました。`, 'info');
-        createServerModal.classList.add('hidden');
-    });
-
-
-    // メインコンテンツエリアのイベント委任 (v6で更新)
-    document.getElementById('app').addEventListener('click', (e) => {
-        const target = e.target;
-        const serverItem = target.closest('.server-item-container');
-        const physicalServerItem = target.closest('.physical-server-item');
-
-        // --- Physical Server List View ---
-        if (state.currentView === 'physical' && physicalServerItem) {
-            const agentId = physicalServerItem.dataset.agentId;
-            showPhysicalDetailView(agentId);
-            return;
-        }
-
-        // --- Physical Server Detail View ---
-        if (state.currentView === 'physical-detail') {
-            const agentId = state.selectedPhysicalServerId;
-            if (target.closest('#back-to-physical-list-btn')) {
-                showPhysicalListView();
-                return;
-            }
-            const tabBtn = target.closest('.physical-detail-tab-btn');
-            if (tabBtn) {
-                const newTab = tabBtn.dataset.tab;
-                if (state.physicalServerDetailActiveTab !== newTab) {
-                    state.physicalServerDetailActiveTab = newTab;
-                    if (newTab === 'settings') {
-                        // AgentにOS/CPU情報を要求 (WebSocket経由)
-                        window.electronAPI.proxyToServer(agentId, { type: 'get-agent-system-info', messageId: `systemInfo-${Date.now()}` });
-                    }
-                    renderPhysicalServerDetail(); // タブスタイル更新のために再描画
-                }
-                return;
-            }
-
-            // Javaインストールオーバーレイのキャンセルボタン
-            if (target === javaInstallCancelBtn) {
-                javaInstallOverlay.classList.add('hidden');
-                return;
-            }
-
-            // Javaインストールオーバーレイのインストールボタン
-            if (target === javaInstallConfirmBtn) {
-                const selectedJava = document.querySelector('input[name="java-version"]:checked');
-                if (!selectedJava) {
-                    showNotification('インストールするJavaバージョンを選択してください。', 'error');
-                    return;
-                }
-                const javaInstallData = JSON.parse(selectedJava.value);
-                const agentId = state.javaInstallAgentId;
-
-                if (agentId) {
-                    window.electronAPI.installJava(agentId, javaInstallData);
-                    showNotification(`Agent ${agentId} にJavaのインストールを要求しました。`, 'info');
-                    // インストール開始後、プログレスバーを表示
-                    javaInstallProgressBar.style.width = '0%';
-                    javaInstallProgressBar.classList.remove('hidden');
-                    javaInstallStatusText.textContent = 'ダウンロード中...';
-                    javaInstallStatusText.classList.remove('hidden');
-                }
-                return;
-            }
-            if (target.closest('[data-action="install-java"]')) {
-                // Javaインストールオーバーレイを表示
-                const javaInstallOverlay = document.getElementById('java-install-overlay');
-                javaInstallOverlay.classList.remove('hidden');
-                // stateに選択中のagentIdを保存
-                state.javaInstallAgentId = agentId;
-
-                // AgentのOSとCPUアーキテクチャが取得済みであることを確認
-                const agent = state.physicalServers.get(agentId);
-                if (!agent || !agent.systemInfo || !agent.systemInfo.os || !agent.systemInfo.arch) {
-                    showNotification('AgentのOS/CPU情報が取得できていません。設定タブで情報を読み込んでください。', 'error');
-                    javaInstallOverlay.classList.add('hidden');
-                    return;
-                }
-                
-                // JavaダウンロードURL取得時のためにOSとCPUアーキテクチャをstateに保存
-                state.javaDownloadOs = agent.systemInfo.os;
-                state.javaDownloadArch = agent.systemInfo.arch;
-
-                // Javaのダウンロード候補リストを取得するIPCイベントを呼び出す
-                window.electronAPI.getJavaDownloadInfo({
-                    feature_version: 'any', // 全てのバージョンを取得
-                    os: state.javaDownloadOs,
-                    arch: state.javaDownloadArch
-                }).then(response => {
-                    if (response.success) {
-                        // 取得したダウンロード情報には個別のJavaバージョン情報が含まれると仮定
-                        // ここでは簡単に、Adoptium APIから取得した情報をそのままrenderJavaDownloadListに渡す
-                        // 注意: Adoptium APIのレスポンス形式によっては、renderJavaDownloadListに渡すデータを整形する必要があるかもしれません。
-                        renderJavaDownloadList([
-                            {
-                                version: `Java ${response.feature_version}`, // 例: Java 17
-                                downloadUrl: response.downloadLink,
-                                fileSize: response.fileSize,
-                                os: state.javaDownloadOs,
-                                arch: state.javaDownloadArch
-                            }
-                        ]);
-                    } else {
-                        showNotification(`Javaダウンロード情報の取得に失敗しました: ${response.error}`, 'error');
-                        javaInstallOverlay.classList.add('hidden');
-                    }
-                }).catch(error => {
-                    console.error('Failed to get Java download info:', error);
-                    showNotification(`Javaダウンロード情報の取得中にエラーが発生しました: ${error.message}`, 'error');
-                    javaInstallOverlay.classList.add('hidden');
-                });
-                return;
-            }
-            if (target.closest('[data-action="save-agent-settings"]')) {
-                const config = {
-                    alias: document.getElementById('agent-alias').value,
-                    ip: document.getElementById('agent-ip').value,
-                    port: parseInt(document.getElementById('agent-port').value, 10),
-                    path: document.getElementById('agent-path').value,
-                };
-                window.electronAPI.updateAgentSettings({ agentId, config });
-                target.textContent = '保存しました!';
-                setTimeout(() => { target.textContent = '設定を保存'; }, 2000);
-                return;
-            }
-            if (target.closest('[data-action="delete-agent"]')) {
-                const agent = state.physicalServers.get(agentId);
-                state.physicalServerToDeleteId = agentId;
-                deletingServerNameSpan.textContent = agent.config.alias;
-                deleteModal.classList.remove('hidden');
-                return;
-            }
-        }
-
-        // --- Game Server List View ---
-        if (state.currentView === 'list' && serverItem) {
-            const serverId = serverItem.dataset.serverId;
-            if (target.closest('[data-action="toggle-status"]')) {
-                e.stopPropagation();
-                toggleServerStatus(serverId);
-                return;
-            }
-            if (!target.closest('[contenteditable="true"]') && !target.closest('button')) {
-                showDetailView(serverId);
-                return;
-            }
-        }
-
-        // --- Game Server Detail View ---
-        if (state.currentView === 'detail') {
-            const serverId = state.selectedServerId;
-            const server = state.servers.find(s => s.server_id === serverId);
-            if (!server) return;
-
-            if (target.closest('#back-to-list-btn')) { showListView(); return; }
-            const tabBtn = target.closest('.detail-tab-btn');
-            if (tabBtn) {
-                const newTab = tabBtn.dataset.tab;
-                if (state.detailActiveTab !== newTab) {
-                    state.detailActiveTab = newTab;
-                    updateDetailView();
-                }
-                return;
-            }
-            if (target.closest('[data-action="toggle-status"]')) { toggleServerStatus(serverId); return; }
-            if (target.closest('[data-action="delete-server"]')) {
-                state.serverToDeleteId = serverId;
-                deletingServerNameSpan.textContent = server.name;
-                deleteModal.classList.remove('hidden');
-            }
-            if (target.closest('[data-action="save-properties"]')) {
-                saveProperties(serverId, target.closest('button'));
-            }
-        }
-    });
-    
-    // 編集可能なフィールド
-    document.getElementById('app').addEventListener('focusout', (e) => {
-        if (e.target.matches('.editable[contenteditable="true"]')) {
-            const serverId = e.target.closest('[data-server-id]') ? e.target.closest('[data-server-id]').dataset.serverId : state.selectedServerId;
-            updateServerData(serverId, e.target.dataset.field, e.target.innerText);
-        }
-    });
-
-    // 削除モーダル
-    confirmDeleteBtn.addEventListener('click', () => {
-        if (state.serverToDeleteId !== null) {
-            // サーバーオブジェクトとホストIDを見つける
-            let serverToDelete = null;
-            let hostId = null;
-            for (const [agentId, servers] of state.agentServers.entries()) {
-                const foundServer = servers.find(s => s.server_id === state.serverToDeleteId);
-                if (foundServer) {
-                    serverToDelete = foundServer;
-                    hostId = agentId;
-                    break;
-                }
-            }
-
-            if (serverToDelete && hostId) {
-                // 正しいホストに、正しいメッセージタイプで削除を要求
-                window.electronAPI.proxyToServer(hostId, {
-                    type: 'deleteServer',
-                    payload: { serverId: state.serverToDeleteId }
-                });
-
-                // 楽観的UI更新：エージェントからのリスト更新を待たずにUIから削除
-                const serversOnHost = state.agentServers.get(hostId) || [];
-                const serverIndex = serversOnHost.findIndex(s => s.server_id === state.serverToDeleteId);
-                if (serverIndex !== -1) {
-                    serversOnHost.splice(serverIndex, 1);
-                    state.agentServers.set(hostId, serversOnHost);
-                }
-            } else {
-                console.warn(`削除対象のサーバーが見つかりませんでした: ${state.serverToDeleteId}`);
-            }
-            
-            state.serverToDeleteId = null;
-            showListView();
-        }
-        if (state.physicalServerToDeleteId !== null) {
-            window.electronAPI.deleteAgent(state.physicalServerToDeleteId);
-            state.physicalServerToDeleteId = null;
-            showPhysicalListView();
-        }
-        deleteModal.classList.add('hidden');
-    });
-    cancelDeleteBtn.addEventListener('click', () => { 
-        deleteModal.classList.add('hidden'); 
-        state.serverToDeleteId = null;
-        state.physicalServerToDeleteId = null;
-    });
-
-    // Javaダウンロードリストをレンダリングする関数
-    const renderJavaDownloadList = (javaVersions) => {
-        javaDownloadList.innerHTML = ''; // Clear previous list
-        if (javaVersions.length === 0) {
-            javaDownloadList.innerHTML = '<p>利用可能なJavaバージョンがありません。</p>';
-            javaInstallConfirmBtn.disabled = true;
-            return;
-        }
-
-        javaInstallConfirmBtn.disabled = false;
-        javaVersions.forEach((java, index) => {
-            const li = document.createElement('li');
-            li.innerHTML = `
-                <input type="radio" id="java-${index}" name="java-version" value='${JSON.stringify(java)}' class="mr-2">
-                <label for="java-${index}" class="cursor-pointer">
-                    ${java.version} (${java.fileSize}) - ${java.os} ${java.arch}
-                </label>
-            `;
-            javaDownloadList.appendChild(li);
-        });
-    };
-
-    // JavaインストールオーバーレイのUIを更新する関数
-    const updateJavaInstallOverlay = (status) => {
-        const { progress, message, type, error } = status;
-
-        if (type === 'progress') {
-            javaInstallProgressBar.style.width = `${progress}%`;
-            javaInstallStatusText.textContent = message;
-        } else if (type === 'success') {
-            javaInstallProgressBar.style.width = '100%';
-            javaInstallStatusText.textContent = 'インストール完了！';
-            javaInstallProgressBar.classList.add('hidden');
-            javaInstallStatusText.classList.add('hidden');
-            // 必要に応じてオーバーレイを閉じる
-            javaInstallOverlay.classList.add('hidden');
-        } else if (type === 'error') {
-            javaInstallProgressBar.style.width = '0%';
-            javaInstallStatusText.textContent = `エラー: ${error}`;
-            showNotification(`Javaインストールエラー: ${error}`, 'error');
-            javaInstallProgressBar.classList.add('hidden');
-            javaInstallStatusText.classList.add('hidden');
-        }
-    };
-    
-    // --- ダークモード ---
-    function toggleDarkMode() {
-        const htmlEl = document.documentElement;
-        const isDark = htmlEl.classList.contains('dark');
-        if (isDark) {
-            htmlEl.classList.remove('dark'); htmlEl.classList.add('light');
-            localStorage.setItem('theme', 'light');
-            sunIcon.classList.remove('hidden'); moonIcon.classList.add('hidden');
-        } else {
-            htmlEl.classList.remove('light'); htmlEl.classList.add('dark');
-            localStorage.setItem('theme', 'dark');
-            sunIcon.classList.add('hidden'); moonIcon.classList.remove('hidden');
-        }
-    }
-    darkModeToggle.addEventListener('click', toggleDarkMode);
-    const savedTheme = localStorage.getItem('theme');
-    const htmlEl = document.documentElement;
-    if (savedTheme === 'light') {
-        htmlEl.classList.remove('dark'); htmlEl.classList.add('light');
-        sunIcon.classList.remove('hidden'); moonIcon.classList.add('hidden');
-    } else {
-        htmlEl.classList.remove('light'); htmlEl.classList.add('dark');
-        sunIcon.classList.add('hidden'); moonIcon.classList.remove('hidden');
-    }
-
-    // --- Agent/Main Process Communication ---
-    let isInitialAgentListReceived = false;
+    // Agentリストが更新された
     window.electronAPI.onAgentList((agentList) => {
+        const isInitialLoad = state.physicalServers.size === 0;
         state.physicalServers.clear();
         agentList.forEach(agent => {
             state.physicalServers.set(agent.id, { ...agent, metrics: {}, systemInfo: {}, logs: [] });
         });
 
-        // 初回のAgentリスト受信時に、サーバーリストを要求する
-        if (!isInitialAgentListReceived && agentList.length > 0) {
-            console.log('Initial agent list received. Requesting server lists.');
-            window.electronAPI.requestAllServers();
-            isInitialAgentListReceived = true;
+        // 初回のAgentリスト受信時に、全サーバーリストを要求する
+        if (isInitialLoad && agentList.length > 0) {
+            console.log('Initial agent list received. Requesting all server lists from all agents.');
+            agentList.forEach(agent => {
+                if (agent.status === 'Connected') {
+                    window.electronAPI.proxyToAgent(agent.id, { type: 'get-all-servers' });
+                }
+            });
         }
-
         updateView();
     });
 
+    // 特定のAgentの状態が更新された
     window.electronAPI.onAgentStatusUpdate((agentUpdate) => {
         if (state.physicalServers.has(agentUpdate.id)) {
             const agent = state.physicalServers.get(agentUpdate.id);
             agent.status = agentUpdate.status;
             if (agent.status !== 'Connected') {
-                agent.metrics = {};
+                agent.metrics = {}; // 切断されたらメトリクスをクリア
             }
             updateView();
         }
     });
 
-    window.electronAPI.onAgentData(({ agentId, data }) => {
-        if (state.physicalServers.has(agentId)) {
-            const agent = state.physicalServers.get(agentId);
-            switch (data.type) {
-                case 'systemInfo':
-                    agent.systemInfo = data.payload;
-                    break;
-                case 'metricsData':
-                    agent.metrics = data.payload;
-                    break;
-                case 'server_update':
-                    {
-                        const { serverId, type, payload } = data.payload;
-                        const hostServers = state.agentServers.get(agentId);
-                        if (hostServers) {
-                            const server = hostServers.find(s => s.server_id === serverId);
-                            if (server) {
-                                console.log(`[Renderer] Received server_update for ${serverId}: ${type}`);
-                                switch (type) {
-                                    case 'status_change':
-                                        server.status = payload;
-                                        break;
-                                    case 'log':
-                                        // ログがない場合に備えて初期化
-                                        if (!server.logs) server.logs = [];
-                                        server.logs.push(payload);
-                                        // パフォーマンスのためにログ配列の長さを制限
-                                        if (server.logs.length > 200) server.logs.shift();
-                                        break;
-                                }
-                                // ゲームサーバー関連のビューが表示されている場合のみUIを更新
-                                if (state.currentView === 'list' || (state.currentView === 'detail' && state.selectedServerId === serverId)) {
-                                    updateView();
-                                }
-                            }
-                        }
-                    }
-                    // このメッセージタイプは物理サーバーのビュー更新とは独立しているため、ここで処理を終了
-                    return;
+    // Agentからの個別サーバー更新
+    window.electronAPI.onServerUpdate(({ agentId, payload }) => {
+        const hostServers = state.agentServers.get(agentId);
+        if (!hostServers) return;
+        const server = hostServers.find(s => s.server_id === payload.serverId);
+        if (server) {
+            if (payload.type === 'status_change') {
+                server.status = payload.payload;
+            } else if (payload.type === 'log') {
+                if (!server.logs) server.logs = [];
+                server.logs.push(payload.payload);
+                if (server.logs.length > 200) server.logs.shift();
             }
-            if ((state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId) || state.currentView === 'physical') {
+            if (state.currentView === 'list' || (state.currentView === 'detail' && state.selectedServerId === payload.serverId)) {
                 updateView();
             }
         }
     });
 
-    window.electronAPI.onAgentLogEntry(({ agentId, message }) => {
-        if (state.physicalServers.has(agentId)) {
-            const agent = state.physicalServers.get(agentId);
-            if (!agent.logs) agent.logs = [];
-            agent.logs.push(message);
-            if (agent.logs.length > 100) agent.logs.shift(); // Keep logs to a reasonable size
-            
-            if (state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId && state.physicalServerDetailActiveTab === 'logs') {
-                updatePhysicalServerDetailContent();
+    // Agentからのメトリクス更新 (プッシュ)
+    window.electronAPI.onMetricsData(({ agentId, payload }) => {
+        const agent = state.physicalServers.get(agentId);
+        if (agent) {
+            agent.metrics = payload;
+            updateMetricsUI();
+        }
+    });
+
+    // Agentからのシステム情報更新
+    window.electronAPI.onAgentSystemInfo(({ agentId, payload }) => {
+        const agent = state.physicalServers.get(agentId);
+        if (agent) {
+            agent.systemInfo = payload;
+            // 必要に応じてUIを更新
+            if (state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId) {
+                renderPhysicalServerDetail();
             }
         }
     });
 
+    // Agentのログが追加された
+    window.electronAPI.onAgentLogEntry(({ agentId, message }) => {
+        const agent = state.physicalServers.get(agentId);
+        if (agent) {
+            if (!agent.logs) agent.logs = [];
+            agent.logs.push(message);
+            if (agent.logs.length > 100) agent.logs.shift();
+            
+            if (state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId && state.physicalServerDetailActiveTab === 'logs') {
+                renderPhysicalServerDetail(); // UI更新
+            }
+        }
+    });
+
+    // ゲームサーバーのリストが更新された
     window.electronAPI.onServerListUpdate(({ agentId, servers }) => {
-        // UI表示に必要なデフォルトプロパティを付与する
         const serversWithUIData = servers.map(s => ({
             ...s,
             hostId: agentId,
-            // UIでsliceされる可能性があるため、デフォルト値として空の配列を保証する
             logs: s.logs || [],
             players: s.players || { current: 0, max: 20, list: [], recent: [] },
             cpu: s.cpu || 0,
@@ -615,82 +148,519 @@ document.addEventListener('DOMContentLoaded', () => {
             tps: s.tps || 0,
             memo: s.memo || '',
         }));
-        console.log(`[Agent Op] Received server list update from agent ${agentId}. Total servers: ${serversWithUIData.length}`);
         state.agentServers.set(agentId, serversWithUIData);
-        
-        // データ到着時にビューを直接更新する
         if (state.currentView === 'list') {
-            renderServerList();
-        } else if (state.currentView === 'detail') {
-            updateDetailView();
+            updateView();
         }
     });
 
-    window.electronAPI.onServerCreationFailed(({ agentId, error }) => {
+    // --- 操作の進捗と結果のハンドリング ---
+
+    // 進捗更新
+    window.electronAPI.onProgressUpdate(({ agentId, requestId, operation, payload }) => {
+        console.log(`[Progress] Op: ${operation}, Req: ${requestId}, Payload:`, payload);
         const agent = state.physicalServers.get(agentId);
-        const agentName = agent ? agent.config.alias : agentId;
-        showNotification(`作成失敗 on ${agentName}: ${error}`, 'error');
-    });
+        const agentName = agent ? agent.config.alias : 'Unknown';
+        const notifId = `progress-${requestId}`;
 
-    window.electronAPI.onJavaInstallStatus((status) => {
-        console.log('Javaインストールステータスを受信:', status);
-        const { agentId, progress, message, type, error, installDir, javaExecutable } = status;
-
-        // 対象のAgentのJavaインストールステータスを更新
-        if (state.physicalServers.has(agentId)) {
-            const agent = state.physicalServers.get(agentId);
-            agent.javaInstallStatus = { progress, message, type, error, installDir, javaExecutable };
-            
-            // Javaインストールオーバーレイがアクティブな場合、UIを更新
-            if (!document.getElementById('java-install-overlay').classList.contains('hidden')) {
-                updateJavaInstallOverlay(status);
-            }
-
-            if (type === 'success') {
-                showNotification(`Agent ${agent.config.alias} にJavaが正常にインストールされました。`, 'success');
-                // インストール完了後、オーバーレイを非表示にする
-                document.getElementById('java-install-overlay').classList.add('hidden');
-            } else if (type === 'error') {
-                showNotification(`Agent ${agent.config.alias} でJavaのインストールに失敗しました: ${error}`, 'error');
-            }
+        if (operation === 'create-server' || operation === 'install-java') {
+            showNotification(`${agentName}: ${payload.message}`, 'info', notifId, 0); // 0 = no auto-dismiss
         }
     });
 
+    // 操作完了/失敗
+    window.electronAPI.onOperationResult(({ agentId, requestId, operation, success, payload, error }) => {
+         console.log(`[Result] Op: ${operation}, Req: ${requestId}, Success: ${success}`);
+         const agent = state.physicalServers.get(agentId);
+         const agentName = agent ? agent.config.alias : 'Unknown';
+         const notifId = `progress-${requestId}`;
+
+        if (operation === 'create-server') {
+            if (success) {
+                showNotification(`サーバーが正常に作成されました。`, 'success', notifId, 5000);
+            } else {
+                showNotification(`${agentName}でのサーバー作成失敗: ${error.message}`, 'error', notifId, 10000);
+            }
+        } else if (operation === 'install-java') {
+            if (success) {
+                const javaVersion = payload?.javaVersion || '不明なバージョン';
+                showNotification(`Java ${javaVersion} のインストールが完了しました。`, 'success', notifId, 5000);
+            } else {
+                showNotification(`Javaのインストールに失敗: ${error.message}`, 'error', notifId, 10000);
+            }
+        } else if (operation === 'delete-server') {
+             const serverId = payload?.serverId || error?.details?.serverId;
+             if (success) {
+                 showNotification(`サーバー「${serverId.substring(0, 8)}...」を削除しました。`, 'success');
+                 if (state.agentServers.has(agentId)) {
+                     const updatedServers = state.agentServers.get(agentId).filter(s => s.server_id !== serverId);
+                     state.agentServers.set(agentId, updatedServers);
+                 }
+             } else {
+                 showNotification(`サーバー削除失敗: ${error?.message || 'Unknown error'}`, 'error');
+             }
+             if (serverId) {
+                state.serversBeingDeleted.delete(serverId);
+             }
+             updateView();
+        }
+    });
+
+    // Agentからの警告通知
+    window.electronAPI.onNotifyWarn(({ agentId, payload }) => {
+        const agent = state.physicalServers.get(agentId);
+        const agentName = agent ? agent.config.alias : 'Unknown Agent';
+        const message = `<b>[${agentName}]</b><br>サーバーID: ${payload.serverId.substring(0,8)}...<br>${payload.message}`;
+        showNotification(message, 'error', `warn-${payload.serverId}`, 10000);
+    });
+
+    // EULA同意要求の受信
+    window.electronAPI.onRequireEulaAgreement(({ agentId, requestId, payload }) => {
+        const eulaModal = document.getElementById('eula-modal');
+        const eulaContentEl = document.getElementById('eula-content');
+        const confirmBtn = document.getElementById('confirm-eula-btn');
+        const cancelBtn = document.getElementById('cancel-eula-btn');
+
+        eulaContentEl.textContent = payload.eulaContent;
+
+        // ボタンのリスナーを一度クリアしてから再設定
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+        newConfirmBtn.addEventListener('click', () => {
+            window.electronAPI.proxyToAgent(agentId, {
+                type: 'accept-eula',
+                payload: { serverId: payload.serverId }
+            });
+            eulaModal.classList.add('hidden');
+        });
+
+        newCancelBtn.addEventListener('click', () => {
+            eulaModal.classList.add('hidden');
+            // ユーザーがキャンセルしたことを通知 (任意)
+            showNotification('EULAへの同意がキャンセルされました。サーバーは起動されません。', 'info');
+        });
+
+        eulaModal.classList.remove('hidden');
+    });
+
+    // Minecraftバージョンリストの受信
     window.electronAPI.onMinecraftVersions(({ success, versions, error }) => {
         const versionSelect = document.getElementById('version-select');
         if (success) {
-            // release -> snapshot の順にソート
-            versions.sort((a, b) => {
-                if (a.type === 'release' && b.type !== 'release') return -1;
-                if (a.type !== 'release' && b.type === 'release') return 1;
-                return 0; // 他は元の順序を維持
-            });
-
-            versionSelect.innerHTML = versions.map(v =>
-                `<option value="${v.id}">${v.id} (${v.type})</option>`
-            ).join('');
+            versions.sort((a, b) => (a.type === 'release' && b.type !== 'release') ? -1 : 1);
+            versionSelect.innerHTML = versions.map(v => `<option value="${v.id}">${v.id} (${v.type})</option>`).join('');
         } else {
             versionSelect.innerHTML = `<option value="">バージョン取得失敗</option>`;
-            showNotification(`Minecraftバージョンの取得に失敗しました: ${error}`, 'error');
+            showNotification(`Minecraftバージョン取得失敗: ${error}`, 'error');
         }
     });
 
-    // --- Initial Load ---
-    if (state.currentView === 'physical' || state.currentView === 'physical-detail') {
-        startGlobalMetricsLoop();
-    }
-    updateView();
-    // window.electronAPI.requestAgentList(); // 初期エージェントリストはmainから自動で送られる
 
-    // --- 起動シーケンス ---
+    // --- DOMイベントリスナー (ユーザー操作) ---
+    
+    // メインコンテナへのイベント委譲
+    document.getElementById('app').addEventListener('click', (e) => {
+        const target = e.target;
+        const serverItem = target.closest('.server-item-container');
+        const physicalServerItem = target.closest('.physical-server-item');
+
+        // 物理サーバーリスト -> 詳細
+        if (state.currentView === 'physical' && physicalServerItem) {
+            state.selectedPhysicalServerId = physicalServerItem.dataset.agentId;
+            state.currentView = 'physical-detail';
+            state.physicalServerDetailActiveTab = 'status';
+            startGlobalMetricsLoop(); // 詳細ビューでもポーリングを継続
+            updateView();
+            return;
+        }
+
+        // ゲームサーバーリスト -> 詳細
+        if (state.currentView === 'list' && serverItem) {
+            if (!target.closest('[data-action]')) { // アクションボタン以外をクリック
+                state.selectedServerId = serverItem.dataset.serverId;
+                state.currentView = 'detail';
+                state.detailActiveTab = 'basic';
+                updateView();
+            }
+            return;
+        }
+
+        // 「戻る」ボタン
+        if (target.closest('#back-to-list-btn')) {
+            state.currentView = 'list';
+            state.selectedServerId = null;
+            // リストに戻るときに最新情報を要求
+            for (const agent of state.physicalServers.values()) {
+                if (agent.status === 'Connected') {
+                    window.electronAPI.proxyToAgent(agent.id, { type: 'get-all-servers' });
+                }
+            }
+            updateView();
+            return;
+        }
+        if (target.closest('#back-to-physical-list-btn')) {
+            state.currentView = 'physical';
+            state.selectedPhysicalServerId = null;
+            updateView();
+            return;
+        }
+
+        // タブ切り替え (ゲームサーバー詳細)
+        const detailTabBtn = target.closest('.detail-tab-btn');
+        if (detailTabBtn) {
+            const newTab = detailTabBtn.dataset.tab;
+            if (state.detailActiveTab !== newTab) {
+                state.detailActiveTab = newTab;
+                renderServerDetail(); // タブスタイルとコンテンツを再描画
+            }
+            return;
+        }
+        
+        // サブタブ切り替え (ゲームサーバー詳細 -> 基本設定)
+        const detailSubTabBtn = target.closest('.detail-subtab-btn');
+        if (detailSubTabBtn) {
+            const newSubTab = detailSubTabBtn.dataset.subtab;
+            if (state.detailBasicActiveSubTab !== newSubTab) {
+                state.detailBasicActiveSubTab = newSubTab;
+                updateDetailBasicSubTab(); // サブタブコンテンツのみ再描画
+            }
+            return;
+        }
+
+        // タブ切り替え (物理サーバー詳細)
+        const physicalTabBtn = target.closest('.physical-detail-tab-btn');
+        if (physicalTabBtn) {
+            const newTab = physicalTabBtn.dataset.tab;
+            if (state.physicalServerDetailActiveTab !== newTab) {
+                state.physicalServerDetailActiveTab = newTab;
+                if (newTab === 'settings') {
+                    window.electronAPI.proxyToAgent(state.selectedPhysicalServerId, { type: 'get-system-info' });
+                }
+                renderPhysicalServerDetail(); // タブスタイルとコンテンツを再描画
+            }
+            return;
+        }
+
+        // --- アクションボタン ---
+        const actionBtn = target.closest('[data-action]');
+        if (actionBtn) {
+            const action = actionBtn.dataset.action;
+            const serverId = state.selectedServerId || (target.closest('.server-item-container') ? target.closest('.server-item-container').dataset.serverId : null);
+            const agentId = state.selectedPhysicalServerId;
+
+            switch (action) {
+                case 'open-java-install-modal':
+                    {
+                        const agent = getters.selectedPhysicalServer();
+                        if (agent) {
+                            state.javaInstallAgentId = agent.id;
+                            const javaInstallModal = document.getElementById('java-install-modal');
+                            // Reset fields and show
+                            document.getElementById('java-version-select').value = '17';
+                            document.getElementById('java-download-url').value = '';
+                            document.getElementById('java-file-size').value = '';
+                            javaInstallModal.classList.remove('hidden');
+                            
+                            // Trigger change to auto-fetch URL for the default version
+                            document.getElementById('java-version-select').dispatchEvent(new Event('change'));
+                        }
+                    }
+                    break;
+                case 'toggle-status':
+                    if (serverId) {
+                        const server = getters.allServers().find(s => s.server_id === serverId);
+                        if (server) {
+                            const newAction = server.status === 'running' ? 'stop' : 'start';
+                            window.electronAPI.proxyToAgent(server.hostId, {
+                                type: 'control-server',
+                                payload: { serverId: server.server_id, action: newAction }
+                            });
+                        }
+                    }
+                    break;
+                
+                case 'save-properties':
+                    if (serverId) {
+                        const server = getters.selectedServer();
+                        const editor = document.getElementById('properties-editor');
+                        if (server && editor) {
+                            const newProperties = { ...server.properties };
+                            Object.keys(server.properties).forEach(key => {
+                                const input = editor.querySelector(`#${key}`);
+                                if (input) {
+                                    if (input.type === 'checkbox') newProperties[key] = input.checked;
+                                    else if (input.type === 'number') newProperties[key] = parseFloat(input.value) || 0;
+                                    else newProperties[key] = input.value;
+                                }
+                            });
+                            window.electronAPI.proxyToAgent(server.hostId, {
+                                type: 'update-server-properties',
+                                payload: { serverId: server.server_id, properties: newProperties }
+                            });
+                            actionBtn.textContent = '保存しました！';
+                            setTimeout(() => { actionBtn.textContent = '変更を保存'; }, 2000);
+                        }
+                    }
+                    break;
+
+                case 'delete-server':
+                    if (serverId) {
+                        const server = getters.allServers().find(s => s.server_id === serverId);
+                        if (server) {
+                            state.serverToDeleteId = server.server_id;
+                            document.getElementById('deleting-server-name').textContent = server.server_name;
+                            document.getElementById('delete-modal').classList.remove('hidden');
+                        }
+                    }
+                    break;
+                
+                // 他のアクションもここに追加...
+            }
+        }
+    });
+
+    // --- Modal Handlers ---
+    const createServerModal = document.getElementById('create-server-modal');
+    const addServerBtn = document.getElementById('add-server-btn');
+    const cancelCreateServerBtn = document.getElementById('cancel-create-server-btn');
+    const confirmCreateServerBtn = document.getElementById('confirm-create-server-btn');
+    
+    const deleteModal = document.getElementById('delete-modal');
+    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+    const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+
+    const javaInstallModal = document.getElementById('java-install-modal');
+    const javaVersionSelect = document.getElementById('java-version-select');
+    const installJavaBtn = document.getElementById('install-java-btn');
+    const cancelJavaInstallBtn = document.getElementById('cancel-java-install-btn');
+
+
+    confirmDeleteBtn.addEventListener('click', () => {
+        const serverId = state.serverToDeleteId;
+        if (serverId) {
+            const server = getters.allServers().find(s => s.server_id === serverId);
+            if (server) {
+                // UIロックを開始
+                state.serversBeingDeleted.add(serverId);
+                showNotification(`サーバー「${server.server_name}」の削除要求を送信しました...`, 'info');
+                updateView(); // ロック状態を即時反映
+
+                window.electronAPI.proxyToAgent(server.hostId, {
+                    type: 'delete-server',
+                    payload: { serverId: server.server_id }
+                });
+            }
+        }
+        deleteModal.classList.add('hidden');
+        state.serverToDeleteId = null;
+    });
+
+    cancelDeleteBtn.addEventListener('click', () => {
+        deleteModal.classList.add('hidden');
+        state.serverToDeleteId = null;
+    });
+
+    if (addServerBtn) {
+        addServerBtn.addEventListener('click', () => {
+            const hostSelect = document.getElementById('host-select');
+            if (!hostSelect) return;
+
+            // ホスト選択のオプションをクリアして再生成
+            hostSelect.innerHTML = '';
+            const onlineAgents = Array.from(state.physicalServers.values()).filter(p => p.status === 'Connected');
+
+            if (onlineAgents.length === 0) {
+                hostSelect.innerHTML = '<option value="">利用可能なホストがありません</option>';
+                hostSelect.disabled = true;
+                if(confirmCreateServerBtn) confirmCreateServerBtn.disabled = true;
+            } else {
+                onlineAgents.forEach(agent => {
+                    const option = document.createElement('option');
+                    option.value = agent.id;
+                    option.textContent = `${agent.config.alias} (${agent.config.ip})`;
+                    hostSelect.appendChild(option);
+                });
+                hostSelect.disabled = false;
+                if(confirmCreateServerBtn) confirmCreateServerBtn.disabled = false;
+            }
+            
+            // バージョンリストの取得を要求
+            const versionSelect = document.getElementById('version-select');
+            if (versionSelect) {
+                versionSelect.innerHTML = '<option>バージョンを読み込み中...</option>';
+            }
+            window.electronAPI.getMinecraftVersions();
+
+            if(createServerModal) createServerModal.classList.remove('hidden');
+        });
+    }
+
+    if (cancelCreateServerBtn) {
+        cancelCreateServerBtn.addEventListener('click', () => {
+            if(createServerModal) createServerModal.classList.add('hidden');
+        });
+    }
+
+    if (confirmCreateServerBtn) {
+        confirmCreateServerBtn.addEventListener('click', async () => {
+            const hostId = document.getElementById('host-select')?.value;
+            const versionId = document.getElementById('version-select')?.value;
+
+            if (!hostId || !versionId) {
+                showNotification('ホストマシンまたはバージョンが選択されていません。', 'error');
+                return;
+            }
+
+            // 選択されたMCバージョンから要求Javaバージョンを取得
+            let requiredJavaVersion = null;
+            try {
+                const result = await window.electronAPI.getRequiredJavaVersion({ mcVersion: versionId });
+                if (result.success) {
+                    requiredJavaVersion = result.javaVersion;
+                    console.log(`[Renderer] Required Java version for ${versionId} is: ${requiredJavaVersion}`);
+                } else {
+                    showNotification(`要求Javaバージョンの取得に失敗: ${result.error}`, 'error');
+                    // 必須ではないので、エラーが出ても処理は続行する
+                }
+            } catch (error) {
+                 showNotification(`要求Javaバージョンの取得中にエラー: ${error.message}`, 'error');
+            }
+
+
+            // mainプロセスにサーバー作成を要求
+            window.electronAPI.proxyToAgent(hostId, {
+                type: 'create-server',
+                payload: {
+                    versionId,
+                    runtime: {
+                        java_version: requiredJavaVersion
+                    }
+                }
+            });
+
+            showNotification(`新規サーバーの作成をホストに要求しました...`, 'info');
+            if(createServerModal) createServerModal.classList.add('hidden');
+        });
+    }
+
+    // --- Java Install Modal ---
+    if (javaVersionSelect) {
+        javaVersionSelect.addEventListener('change', async (e) => {
+            const version = e.target.value;
+            const agent = getters.selectedPhysicalServer();
+            if (!agent || !agent.systemInfo || !agent.systemInfo.os) {
+                showNotification('Agentのシステム情報が取得できていません。', 'error');
+                return;
+            }
+            // Adoptium API uses 'mac' for darwin, 'windows' for win32
+            const os = agent.systemInfo.os === 'darwin' ? 'mac' : (agent.systemInfo.os === 'win32' ? 'windows' : agent.systemInfo.os);
+            const arch = agent.systemInfo.arch;
+
+            const urlInput = document.getElementById('java-download-url');
+            const sizeInput = document.getElementById('java-file-size');
+            urlInput.value = '情報を取得中...';
+            sizeInput.value = '';
+
+            try {
+                const result = await window.electronAPI.getJavaDownloadInfo({ feature_version: version, os, arch });
+                if (result.success) {
+                    urlInput.value = result.downloadLink;
+                    sizeInput.value = `${(result.fileSize / 1024 / 1024).toFixed(2)} MB`;
+                } else {
+                    urlInput.value = '取得失敗';
+                    showNotification(`Java ${version} のダウンロード情報を取得できませんでした: ${result.error}`, 'error');
+                }
+            } catch (err) {
+                 urlInput.value = '取得失敗';
+                 showNotification(`ダウンロード情報取得中にエラーが発生: ${err.message}`, 'error');
+            }
+        });
+    }
+
+    if (installJavaBtn) {
+        installJavaBtn.addEventListener('click', () => {
+            const agentId = state.javaInstallAgentId;
+            const version = document.getElementById('java-version-select').value;
+            const downloadUrl = document.getElementById('java-download-url').value;
+
+            if (!agentId || !version || !downloadUrl || downloadUrl === '情報を取得中...' || downloadUrl === '取得失敗') {
+                showNotification('インストール情報が不完全です。', 'error');
+                return;
+            }
+
+            window.electronAPI.proxyToAgent(agentId, {
+                type: 'install-java',
+                payload: { version, downloadUrl }
+            });
+
+            if (javaInstallModal) javaInstallModal.classList.add('hidden');
+            showNotification(`Java ${version} のインストールをエージェントに要求しました...`, 'info');
+        });
+    }
+
+    if (cancelJavaInstallBtn) {
+        cancelJavaInstallBtn.addEventListener('click', () => {
+            if (javaInstallModal) javaInstallModal.classList.add('hidden');
+        });
+    }
+
+    // インライン編集の保存
+    document.getElementById('app').addEventListener('focusout', (e) => {
+        if (e.target.matches('.editable[contenteditable="true"]')) {
+            const field = e.target.dataset.field;
+            const value = e.target.innerText;
+            const serverId = state.selectedServerId || e.target.closest('[data-server-id]')?.dataset.serverId;
+            
+            if (serverId && field && (field === 'server_name' || field === 'memo')) {
+                 const server = getters.allServers().find(s => s.server_id === serverId);
+                 if (server && server[field] !== value) {
+                    window.electronAPI.proxyToAgent(server.hostId, {
+                        type: 'update-server',
+                        payload: { serverId, config: { [field]: value } }
+                    });
+                 }
+            }
+        }
+    });
+
+    // ナビゲーション
+    navGameServers.addEventListener('click', (e) => {
+        e.preventDefault();
+        stopGlobalMetricsLoop(); // メトリクスのポーリングを停止
+        state.currentView = 'list';
+        state.selectedServerId = null;
+        updateView();
+    });
+    navPhysicalServers.addEventListener('click', (e) => {
+        e.preventDefault();
+        startGlobalMetricsLoop(); // メトリクスのポーリングを開始
+        state.currentView = 'physical';
+        state.selectedPhysicalServerId = null;
+        updateView();
+    });
+
+    // --- 初期ロードシーケンス ---
+    
     // 1. Mainプロセスからの初期ロード完了通知を待つ
     window.electronAPI.onInitialLoadComplete(() => {
-        console.log('Initial load complete signal received from main.');
-        loadingOverlay.style.display = 'none';
-        appContainer.style.visibility = 'visible';
+        document.getElementById('loading-overlay').style.display = 'none';
+        document.getElementById('app').style.visibility = 'visible';
+        updateView();
     });
 
     // 2. UIの準備ができたことをMainプロセスに通知
-    console.log('Renderer is ready, notifying main process.');
     window.electronAPI.rendererReady();
 });
+
+// メトリクスデータを受け取ったときに、関連するUI部分のみを更新する
+function updateMetricsUI() {
+    if (state.currentView === 'physical') {
+        renderPhysicalServerList();
+    } else if (state.currentView === 'physical-detail') {
+        renderPhysicalServerDetail();
+    }
+}

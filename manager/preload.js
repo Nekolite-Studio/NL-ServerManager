@@ -2,30 +2,30 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Renderer to Main (Invoke/Send)
-  requestAgentList: () => ipcRenderer.send('request-agent-list'),
-  requestAllServers: () => ipcRenderer.send('request-all-servers'),
-  requestAgentMetrics: (agentId) => ipcRenderer.send('request-agent-metrics', { agentId }),
-  proxyToServer: (agentId, message) => ipcRenderer.send('proxy-to-agent', { agentId, message }),
-  addAgent: (config) => ipcRenderer.send('add-agent', config),
-  updateAgentSettings: (data) => ipcRenderer.send('update-agent-settings', data), // { agentId, config }
-  deleteAgent: (agentId) => ipcRenderer.send('delete-agent', { agentId }),
-  createServer: (data) => ipcRenderer.send('create-server', data), // { hostId }
   rendererReady: () => ipcRenderer.send('renderer-ready'),
   getMinecraftVersions: () => ipcRenderer.send('get-minecraft-versions'),
-  installJava: (agentId, javaInstallData) => ipcRenderer.send('install-java', { agentId, javaInstallData }),
   getJavaDownloadInfo: (options) => ipcRenderer.invoke('getJavaDownloadInfo', options),
+  getRequiredJavaVersion: (options) => ipcRenderer.invoke('get-required-java-version', options),
+  
+  // 汎用プロキシ経由でAgentにメッセージを送信
+  proxyToAgent: (agentId, message) => ipcRenderer.send('proxy-to-agent', { agentId, message }),
 
   // Main to Renderer (On)
-  onMinecraftVersions: (callback) => ipcRenderer.on('minecraft-versions', (event, ...args) => callback(...args)),
   onInitialLoadComplete: (callback) => ipcRenderer.once('initial-load-complete', (event, ...args) => callback(...args)),
+  onMinecraftVersions: (callback) => ipcRenderer.on('minecraft-versions', (event, ...args) => callback(...args)),
+  
+  // Agentからの非同期データ受信
   onAgentList: (callback) => ipcRenderer.on('agent-list', (event, ...args) => callback(...args)),
   onAgentStatusUpdate: (callback) => ipcRenderer.on('agent-status-update', (event, ...args) => callback(...args)),
-  onAgentData: (callback) => ipcRenderer.on('agent-data', (event, ...args) => callback(...args)),
+  onAgentSystemInfo: (callback) => ipcRenderer.on('agent-system-info', (event, ...args) => callback(...args)),
   onAgentLogEntry: (callback) => ipcRenderer.on('agent-log-entry', (event, ...args) => callback(...args)),
-  onServerListUpdate: (callback) => ipcRenderer.on('server_list_update', (event, ...args) => callback(...args)),
-  onServerCreationFailed: (callback) => ipcRenderer.on('server_creation_failed', (event, ...args) => callback(...args)),
-  onJavaInstallStatus: (callback) => ipcRenderer.on('java-install-status', (event, ...args) => callback(...args)),
-
-  // Keep this for now for other functionalities, will be removed if not needed
-  sendJsonMessage: (message) => ipcRenderer.send('send-json-message', message)
+  onServerListUpdate: (callback) => ipcRenderer.on('server-list-update', (event, ...args) => callback(...args)),
+  onServerUpdate: (callback) => ipcRenderer.on('server-update', (event, ...args) => callback(...args)),
+  onMetricsData: (callback) => ipcRenderer.on('metrics-data', (event, ...args) => callback(...args)), // メトリクス専用
+  
+  // 操作の進捗と結果
+  onProgressUpdate: (callback) => ipcRenderer.on('progress-update', (event, ...args) => callback(...args)),
+  onOperationResult: (callback) => ipcRenderer.on('operation-result', (event, ...args) => callback(...args)),
+  onNotifyWarn: (callback) => ipcRenderer.on('notify-warn', (event, ...args) => callback(...args)),
+  onRequireEulaAgreement: (callback) => ipcRenderer.on('require-eula-agreement', (event, ...args) => callback(...args)),
 });

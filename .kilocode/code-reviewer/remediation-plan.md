@@ -1,105 +1,249 @@
-# コード品質改善計画 (Remediation Plan)
+# コード品質改善計画
 
-このドキュメントは、[`issues.md`](./issues.md:0)で特定された問題点に対する具体的な修正案と実行計画を提示します。
-
----
-
-## 1. 全体的な一貫性の欠如
-
-### 1.1. API命名規則の不統一 (Inconsistent Naming)
-
-- **問題点**: Manager-Agent間のWebSocketメッセージタイプや、`main`プロセス-`renderer`プロセス間のIPCチャンネル名に一貫性がありません。
-- **例**:
-    - `create-server` (IPC) vs `create_server` (WebSocket)
-    - `delete-agent` (IPC) vs `deleteServer` (WebSocket)
-    - `get-agent-system-info` と `systemInfoResponse`
-- **影響**: コードの可読性と保守性を低下させ、開発者がAPIを推測しにくくなります。
-
-- **修正案**: **命名規則を`kebab-case`に統一する。**
-    1.  Manager-Agent間のWebSocketメッセージタイプを`kebab-case`に統一します。
-        - `create_server` → `create-server`
-        - `deleteServer` → `delete-server`
-        - `systemInfoResponse` → `system-info-response`
-        - その他すべてのメッセージタイプを確認し、統一する。
-    2.  IPCチャネル名はすでに`kebab-case`が多いため、現状を維持し、新規作成時もこの規則に従います。
-    3.  変更箇所は[`manager/main.js`](./manager/main.js:0)、[`agent/index.js`](./agent/index.js:0)、および関連するレンダラープロセスのコードです。
+このドキュメントは、[`issues.md`](./issues.md)で指摘された各課題に対する、具体的で実行可能な修正計画を提示します。
 
 ---
 
-### 1.2. ネットワークライブラリの混在 (Mixed Libraries)
+## 1. プロトコル定義の一貫性の欠如 (マジックストリングの使用)
 
-- **問題点**: Managerの`main`プロセス内で、ネットワークリクエストに`net`モジュール、`axios`、`ws`が混在しています。
-- **影響**: 依存関係が不必要に増加し、エラーハンドリングや設定（タイムアウト、プロキシ）の管理が複雑になります。
+**課題:** `manager`と`agent`間の通信で、定義済みのプロトコル定数ではなくハードコードされた文字列が使用されている。
 
-- **修正案**: **HTTPリクエストを`axios`に統一する。**
-    1.  [`manager/main.js`](./manager/main.js:324)で行われているMinecraftバージョンマニフェストの取得処理を、現在の`net`モジュールによる手動実装から`axios`を利用したリクエストに置き換えます。
-    2.  これにより、タイムアウト設定やエラーハンドリングが`axios`の標準的な方法に統一され、コードが簡潔になります。
-    3.  `ws`はWebSocket通信専用のライブラリであり、責務が異なるためそのまま使用します。
+**重要度:** 高
+
+### 具体的な修正案
+
+[`common/protocol.js`](./common/protocol.js:6)で定義されている`Message`定数を使用するように、すべてのメッセージハンドラを統一します。これにより、プロトコルの変更に強く、予測可能なコードになります。
+
+#### 1.1. `manager/main.js`の修正
+
+`ws.on('message', ...)`内の`switch`文を修正し、文字列リテラルを`Message`定数に置き換えます。
+
+**対象ファイル:** [`manager/main.js`](./manager/main.js:109)
+
+**修正例 (`apply_diff`用):**
+```diff
+<<<<<<< SEARCH
+// manager/main.js L112-
+    switch(type) {
+        case Message.SERVER_LIST_UPDATE:
+            mainWindow.webContents.send('server-list-update', payload);
+            break;
+        case 'progress-update':
+            mainWindow.webContents.send('progress-update', payload);
+            break;
+        case 'operation-result':
+            mainWindow.webContents.send('operation-result', payload);
+            break;
+        case 'server-log':
+            mainWindow.webContents.send('server-log', payload);
+            break;
+        case 'server-status-update':
+            mainWindow.webContents.send('server-status-update', payload);
+            break;
+=======
+// manager/main.js L112-
+    switch(type) {
+        case Message.SERVER_LIST_UPDATE:
+            mainWindow.webContents.send(Message.SERVER_LIST_UPDATE, payload);
+            break;
+        case Message.PROGRESS_UPDATE:
+            mainWindow.webContents.send(Message.PROGRESS_UPDATE, payload);
+            break;
+        case Message.OPERATION_RESULT:
+            mainWindow.webContents.send(Message.OPERATION_RESULT, payload);
+            break;
+        case Message.SERVER_LOG:
+            mainWindow.webContents.send(Message.SERVER_LOG, payload);
+            break;
+        case Message.SERVER_STATUS_UPDATE:
+            mainWindow.webContents.send(Message.SERVER_STATUS_UPDATE, payload);
+            break;
+>>>>>>> REPLACE
+```
+
+#### 1.2. `agent/index.js`の修正
+
+Managerからのメッセージを処理する`switch`文で、`'get-metrics'`という文字列を`Message.GET_METRICS`に置き換えます。
+
+**対象ファイル:** [`agent/index.js`](./agent/index.js:138)
+
+**修正例 (`apply_diff`用):**
+```diff
+<<<<<<< SEARCH
+// agent/index.js L138-
+    switch (type) {
+      case 'get-metrics': // Message.GET_METRICS を使うべき
+        ws.send(JSON.stringify({ type: 'metrics-data', payload: getMetrics() }));
+        break;
+      // ... other cases
+    }
+=======
+// agent/index.js L138-
+    switch (type) {
+      case Message.GET_METRICS:
+        ws.send(JSON.stringify({ type: Message.METRICS_DATA, payload: getMetrics() }));
+        break;
+      // ... other cases
+    }
+>>>>>>> REPLACE
+```
+*補足: 応答メッセージの`type`も`'metrics-data'`から`Message.METRICS_DATA`に修正することが望ましいです。*
 
 ---
 
-### 1.3. エラー応答形式の不統一 (Inconsistent Error Responses)
+## 2. エラーハンドリングの不備 (UIへの通知漏れ)
 
-- **問題点**: エラー発生時のクライアントへの通知形式が、処理によって異なります。
-- **影響**: クライアント側でのエラーハンドリングが複雑化し、脆弱になります。
+**課題:** Agent側で発生した重要なフォールバック処理（Javaバージョンの代替実行など）がManager側のUIに通知されない。
 
-- **修正案**: **成功/失敗を示す統一的な応答ラッパーを導入する。**
-    1.  ManagerからRendererへ、またはAgentからManagerへ返す全ての非同期応答を、以下のいずれかの形式に統一します。
-        - **成功時**: `{ success: true, payload: { ... } }`
-        - **失敗時**: `{ success: false, error: { message: "エラーの概要", details: "..." } }`
-    2.  この変更を[`manager/main.js`](./manager/main.js:0)内のすべてのIPC応答およびWebSocketメッセージ送信箇所に適用します。
-    3.  クライアント（Rendererプロセス）側は、まず`success`フラグを確認し、それに応じて`payload`または`error`を処理するように修正します。これにより、エラーハンドリングロジックを共通化できます。
+**重要度:** 中
 
----
+### 具体的な修正案
 
-## 2. 冗長性と責務分担の問題
+ユーザーが意図しない動作を認識できるよう、重要なフォールバックや警告が発生した際に、その情報をManagerに通知する仕組みを導入します。
 
-### 2.1. 巨大なレンダラープロセス (God Object in Renderer)
+#### 2.1. `agent/src/serverManager.js`の修正
 
-- **問題点**: [`manager/renderer.js`](./manager/renderer.js:0) が600行を超えており、UI描画、状態管理、イベントリスナー、ビジネスロジックが密結合しています。
-- **影響**: ファイルの見通しが悪く、修正や機能追加が困難です。単一責任の原則に違反しています。
+指定されたJavaが見つからず、システムのデフォルト`java`にフォールバックする際に、Managerへ通知を送信します。
 
-- **修正案**: **[`renderer.js`](./manager/renderer.js:0)を機能ごとに複数ファイルに分割する。**
-    1.  **`renderer-ui.js`**: UIの描画、更新、DOM操作に特化したモジュール。サーバーリストのレンダリング、ボタンの有効/無効化、モーダルの表示などを担当します。
-    2.  **`renderer-state.js`**: アプリケーションの状態管理を担当するモジュール。サーバーリスト、Agent情報、選択中のアイテムなどの状態を保持し、更新するインターフェースを提供します。
-    3.  [`renderer.js`](./manager/renderer.js:0)はエントリーポイントとして機能し、各モジュールを初期化し、IPCリスナーを設定して、イベントに応じて各モジュールを呼び出す役割に限定します。
+**対象ファイル:** [`agent/src/serverManager.js`](./agent/src/serverManager.js:442)
 
----
+**修正方針:**
+1. `startServer`関数に、WebSocketインスタンス (`ws`) を引数として渡せるようにします。
+2. フォールバックが発生した箇所で、`ws.send()`を呼び出し、新しい警告メッセージを送信します。
 
-### 2.2. 汎用IPCチャネルの冗長性 (Redundant IPC Channel)
+**修正例:**
+```javascript
+// agent/src/serverManager.js L442付近
 
-- **問題点**: [`manager/preload.js`](./manager/preload.js:30) で定義されている`sendJsonMessage`は、より具体的な`proxyToServer`で代替可能な汎用的なメッセージング関数であり、現在は`update_properties`のためだけに使用されています。
-- **影響**: APIの意図が不明確になり、冗長なコードパスを生み出します。
+// ...
+if (!fs.existsSync(javaPath)) {
+    logger.warn(`Java version ${javaVersion} not found at ${javaPath}. Falling back to system default 'java'.`);
+    
+    // UIへの通知を追加
+    if (ws) {
+        ws.send(JSON.stringify({
+            type: Message.NOTIFY_WARN, // 新しいプロトコル定数
+            payload: {
+                serverId: serverId,
+                message: `指定されたJava ${javaVersion} が見つかりません。システムのデフォルトJavaで起動します。`
+            }
+        }));
+    }
 
-- **修正案**: **`sendJsonMessage`を廃止し、`proxyToServer`に統合する。**
-    1.  [`preload.js`](./manager/preload.js:30)から`sendJsonMessage`関数と、それに対応する`main.js`の`'json-message'`リスナーを削除します。
-    2.  現在`sendJsonMessage`を使用しているサーバープロパティの更新処理（`update_properties`）を、`proxyToServer`チャネルを使用するように変更します。
-        - `renderer.js`から`window.electron.proxyToServer(agentId, { type: 'update-properties', payload: { ... } })`のように呼び出します。
-    3.  これにより、Agentへのメッセージはすべて`proxyToServer`という単一のチャネルを経由することになり、責務が明確になります。
-
----
-
-### 2.3. 作成と更新の責務が不明確 (Unclear Responsibility in `updateServer`)
-
-- **問題点**: [`agent/src/serverManager.js`](./agent/src/serverManager.js:249) の `updateServer` 関数が、`serverId`の有無によって新規作成と更新の両方を処理しており、責務が曖昧です。
-- **影響**: 関数名から挙動が予測しにくく、特に新規作成時の副作用（ディレクトリ作成、ファイルダウンロード）が隠蔽されています。
-
-- **修正案**: **関数を`createServer`と`updateServer`に明確に分割する。**
-    1.  **`createServer(options)`**: 新規サーバーの作成に特化した新しい関数を作成します。この関数はディレクトリの作成、`server.jar`のダウンロード、初期設定ファイルの生成などを行います。
-    2.  **`updateServer(serverId, options)`**: 既存の`updateServer`関数をリファクタリングし、`serverId`を必須の引数とします。この関数は既存サーバーの設定（`nl-server_manager.json`）の更新のみを担当するように責務を限定します。
-    3.  Agentのメッセージハンドラ（[`agent/index.js`](./agent/index.js:0)）は、`'create-server'`メッセージで`createServer`を、`'update-server'`メッセージで`updateServer`を呼び出すように修正します。
+    javaPath = 'java'; // フォールバック
+}
+// ...
+```
+*注意: この修正には、`common/protocol.js`への`NOTIFY_WARN`定数の追加と、Manager側での受信ハンドリング実装が別途必要です。*
 
 ---
 
-## 3. 危険なエラーハンドリング
+## 3. データコントラクトの不備 (未実装の機能)
 
-### 3.1. 設定ファイルの破壊的なクリア処理 (Destructive Config Clearing)
+**課題:** Agentから送信されるサーバーメトリクスが、実際の値ではなくダミーデータになっている。
 
-- **問題点**: [`manager/src/storeManager.js`](./manager/src/storeManager.js:41-44) は、`electron-store`のスキーマ検証に失敗した場合、ユーザーに通知なく全ての永続化データを`store.clear()`で削除します。
-- **影響**: データ損失につながる重大な欠陥です。
+**重要度:** 中
 
-- **修正案**: **破壊的な処理を中止し、安全なフォールバック機構を導入する。**
-    1.  スキーマ検証に失敗した場合、`store.clear()`を呼び出すのをやめます。
-    2.  代わりに、既存の設定ファイル（例: `config.json`）を`config.json.bak`のような名前にリネームしてバックアップします。
-    3.  Electronの`dialog.showMessageBox`を使用して、ユーザーに「設定ファイルの読み込みに失敗しました。設定をリセットしますか？以前の設定はバックアップされました。」という趣旨の確認ダイアログを表示します。
-    4.  ユーザーが「はい」を選択した場合にのみ、新しい空の設定ファイルを作成します。これにより、ユーザーは意図せず設定を失うことがなくなり、必要に応じて手動でデータを復旧する機会を得られます。
+### 具体的な修正案
+
+Node.jsの標準モジュールや、必要であれば外部ライブラリを導入し、実際のシステムメトリクスを取得・送信するように`getMetrics`関数を実装します。
+
+#### 3.1. `agent/index.js`の`getMetrics`関数を実装
+
+まずはNode.jsの`os`モジュールを利用して、CPUとメモリの使用率を実装します。
+
+**対象ファイル:** [`agent/index.js`](./agent/index.js:47)
+
+**修正例:**
+```javascript
+// agent/index.js
+
+const os = require('os');
+
+// ...
+
+function getMetrics() {
+    // CPU使用率 (簡易的な計算)
+    // 本番環境では、より正確な計算のために計測期間を設けるべき
+    const cpus = os.cpus();
+    const totalCpuTime = cpus.reduce((acc, cpu) => acc + Object.values(cpu.times).reduce((a, b) => a + b, 0), 0);
+    const totalIdleTime = cpus.reduce((acc, cpu) => acc + cpu.times.idle, 0);
+    // この関数が呼ばれるたびに計算すると差分が取れないため、実際には前回の値との差分で計算する必要がある。
+    // ここでは簡易的にロードアベレージを使用する。
+    const cpuUsage = os.loadavg()[0] / os.cpus().length;
+
+    // メモリ使用率
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+    const ramUsage = usedMem / totalMem;
+
+    // ディスク使用率 (要外部ライブラリ or コマンド実行)
+    // ここではダミーのままにしておくが、将来的には 'systeminformation' などの導入を検討
+    const diskUsage = Math.random();
+
+    return {
+        cpu: cpuUsage,
+        ram: ramUsage,
+        disk: diskUsage,
+    };
+}
+```
+*補足: 正確なCPU使用率の計算は複雑なため、`systeminformation`のようなライブラリを導入することが最も堅牢な解決策です。上記は`os`モジュールのみで実現可能な簡易実装です。*
+
+---
+
+## 4. 冗長なロジック (DRY原則違反)
+
+**課題:** UIの描画ロジックと、バックグラウンドでのデータポーリング制御が密結合している。
+
+**重要度:** 低
+
+### 具体的な修正案
+
+UIの描画 (`updateView`) とポーリングの制御を分離します。ポーリングの開始・停止は、ビューが切り替わる根本的なイベント（例: ナビゲーションクリック）ハンドラ内で明示的に行います。
+
+#### 4.1. `manager/renderer.js`のリファクタリング
+
+**対象ファイル:** [`manager/renderer.js`](./manager/renderer.js:12)
+
+**修正方針:**
+1.  `updateView`関数から`startGlobalMetricsLoop()`と`stopGlobalMetricsLoop()`の呼び出しを削除します。
+2.  ナビゲーション要素（例: `#nav-dashboard`, `#nav-server-details`）のクリックイベントリスナーを修正します。
+3.  クリックイベントリスナー内で、`showView(viewId)`を呼び出す直前・直後に、ビューIDに応じてポーリング制御関数を呼び出します。
+
+**修正例:**
+```javascript
+// manager/renderer.js
+
+// 1. updateViewからポーリング制御を削除
+function updateView() {
+    // ... (現在の描画ロジックのみ残す)
+    // startGlobalMetricsLoop(); や stopGlobalMetricsLoop(); は削除
+}
+
+// 2. ナビゲーションイベントでポーリングを制御
+document.querySelector('#nav-dashboard').addEventListener('click', () => {
+    stopServerMetricsLoop(); // サーバー詳細のポーリングを停止
+    startGlobalMetricsLoop(); // グローバルメトリクスのポーリングを開始
+    showView('dashboard');
+});
+
+document.querySelector('#server-list').addEventListener('click', (event) => {
+    const serverItem = event.target.closest('.server-item');
+    if (serverItem) {
+        stopGlobalMetricsLoop(); // グローバルメトリクスのポーリングを停止
+        state.selectedServerId = serverItem.dataset.serverId;
+        startServerMetricsLoop(state.selectedServerId); // 選択したサーバーのポーリングを開始
+        showView('server-details');
+    }
+});
+
+// showView関数自体は変更不要
+function showView(viewId) {
+    state.currentView = viewId;
+    updateView();
+}
+```
+このリファクタリングにより、`updateView`は状態を描画する責務に専念し、ポーリングのライフサイクル管理は関心事の発生源であるナビゲーションロジックに集約されます。
+> **[完了済み]** このリファクタリングは、`manager/renderer.js` と `manager/renderer-ui.js` への変更を通じて実装されました。ポーリング制御は `renderer.js` に集約され、UI描画の責務と分離されています。

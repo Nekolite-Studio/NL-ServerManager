@@ -1,4 +1,6 @@
+const { dialog } = require('electron');
 const Store = require('electron-store');
+const fs = require('fs');
 
 // スキーマを定義して、データの型とデフォルト値を保証する
 const schema = {
@@ -38,13 +40,50 @@ let store;
 try {
     store = new Store({ schema });
 } catch (error) {
-    console.error('Config schema violation detected. Clearing stored data and re-initializing.', error);
-    // 不正な設定ファイルをクリアする
-    const storeForClear = new Store();
-    storeForClear.clear();
-    // 再度初期化を試みる
-    store = new Store({ schema });
-    console.log('Store has been cleared and re-initialized.');
+    console.error('Config schema violation detected. Attempting to handle safely.', error);
+    
+    const storeInstance = new Store();
+    const configPath = storeInstance.path;
+    const backupPath = `${configPath}.${Date.now()}.bak`;
+
+    try {
+        // 設定ファイルをバックアップ
+        fs.renameSync(configPath, backupPath);
+        console.log(`Backed up corrupted config to: ${backupPath}`);
+    } catch (backupError) {
+        console.error(`Failed to backup corrupted config file: ${backupError}`);
+        // バックアップに失敗した場合は、ユーザーに致命的なエラーを通知するしかない
+        dialog.showErrorBox(
+            '致命的な設定エラー',
+            `設定ファイルの読み込みに失敗し、バックアップも作成できませんでした。\nエラー: ${backupError.message}\nアプリケーションを再インストールする必要があるかもしれません。`
+        );
+        // アプリケーションを終了させる
+        const { app } = require('electron');
+        app.quit();
+        return;
+    }
+
+    // ユーザーに状況を通知し、対応を選択させる
+    const userChoice = dialog.showMessageBoxSync({
+        type: 'warning',
+        title: '設定ファイルが破損しています',
+        message: '設定ファイルが破損しているか、古い形式の可能性があります。',
+        detail: `以前の設定はバックアップされました。\n新しい設定でアプリケーションを続行しますか？\n\nバックアップ場所: ${backupPath}`,
+        buttons: ['新しい設定で続行', 'アプリケーションを終了'],
+        defaultId: 0,
+        cancelId: 1
+    });
+
+    if (userChoice === 0) {
+        // ユーザーが続行を選択した場合、ストアをクリアして再初期化
+        storeInstance.clear();
+        store = new Store({ schema });
+        console.log('Store has been cleared and re-initialized based on user choice.');
+    } else {
+        // ユーザーが終了を選択した場合
+        const { app } = require('electron');
+        app.quit();
+    }
 }
 
 /**

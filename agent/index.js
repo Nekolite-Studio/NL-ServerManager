@@ -3,7 +3,21 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs'); // fsモジュールを追加
 const { initializeSettings, getSettings } = require('./src/settingsManager');
-const { loadAllServers, getAllServers, getServer, updateServer, deleteServer, startServer, stopServer, getJavaInstallDir, extractArchive, getJavaExecutablePath, downloadFile } = require('./src/serverManager');
+const {
+    loadAllServers,
+    getAllServers,
+    createServer, // createServerをインポート
+    updateServer,
+    deleteServer,
+    startServer,
+    stopServer,
+    acceptEula,
+    getJavaInstallDir,
+    extractArchive,
+    getJavaExecutablePath,
+    downloadFile
+} = require('./src/serverManager');
+const { Message } = require('../common/protocol'); // protocol.jsをインポート
 
 // --- 初期化処理 ---
 
@@ -58,10 +72,34 @@ function broadcast(message) {
     });
 }
 
+// リクエスト元に応答を返すヘルパー関数
+function sendResponse(ws, requestId, operation, success, payload, error) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+        type: Message.OPERATION_RESULT,
+        requestId,
+        operation,
+        success,
+        payload: success ? payload : undefined,
+        error: !success ? { message: error, details: payload } : undefined,
+    }));
+}
+
+// 進捗をリクエスト元に通知するヘルパー関数
+function sendProgress(ws, requestId, operation, payload) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+        type: Message.PROGRESS_UPDATE,
+        requestId,
+        operation,
+        payload,
+    }));
+}
+
 // サーバーリストの更新を全Managerに通知する
 function broadcastServerListUpdate() {
     const allServers = getAllServers();
-    broadcast({ type: 'server_list_update', payload: allServers });
+    broadcast({ type: Message.SERVER_LIST_UPDATE, payload: allServers });
 }
 
 
@@ -71,7 +109,7 @@ wss.on('connection', (ws) => {
   console.log('Manager connected.');
 
   // 接続時に現在のサーバーリストを送信
-  ws.send(JSON.stringify({ type: 'server_list_update', payload: getAllServers() }));
+  ws.send(JSON.stringify({ type: Message.SERVER_LIST_UPDATE, payload: getAllServers() }));
 
 
   ws.on('message', async (message) => {
@@ -84,152 +122,195 @@ wss.on('connection', (ws) => {
     }
 
     console.log('Received message from manager:', parsedMessage);
-    const { type, payload, messageId } = parsedMessage; // messageIdを追加
+    const { type, payload, requestId } = parsedMessage;
  
      switch (type) {
        // --- System & Server Info ---
-       case 'get-agent-system-info': // ManagerからのIPCイベント名と一致させる
+       case Message.GET_SYSTEM_INFO:
          ws.send(JSON.stringify({
-           type: 'systemInfoResponse',
-           messageId: messageId, // Managerがどのリクエストに対する応答か識別できるようにする
+           type: Message.SYSTEM_INFO_RESPONSE,
+           requestId: requestId,
            payload: {
              os: process.platform,
              arch: process.arch
            }
          }));
          break;
-       case 'getMetrics':
-         ws.send(JSON.stringify({ type: 'metricsData', payload: getMetrics() }));
+       case Message.GET_METRICS:
+         ws.send(JSON.stringify({ type: Message.METRICS_DATA, payload: getMetrics() }));
          break;
-      case 'getAllServers': // このcaseは下位互換性のために残すが、基本はbroadcastServerListUpdateを使う
-        ws.send(JSON.stringify({ type: 'server_list_update', payload: getAllServers() }));
+      case Message.GET_ALL_SERVERS:
+        ws.send(JSON.stringify({ type: Message.SERVER_LIST_UPDATE, payload: getAllServers() }));
         break;
       
       // --- Server Management ---
-      case 'create_server':
-        {
+      case Message.CREATE_SERVER:
+          {
             const serversDirectory = getSettings().servers_directory;
-            // payloadからversionIdを取得
-            const { versionId } = payload;
-            // updateServerは非同期になるのでawaitを使う
-            // 第3引数にversionIdを含むオブジェクトを渡す
-            const result = await updateServer(serversDirectory, null, { versionId });
+            try {
+                const onProgress = (progressPayload) => {
+                    sendProgress(ws, requestId, type, progressPayload);
+                };
+                const result = await createServer(serversDirectory, payload, onProgress);
+                sendResponse(ws, requestId, type, true, { ...result.config, path: result.path });
+                broadcastServerListUpdate();
+            } catch (error) {
+                console.error(`[Agent] Failed to create server:`, error);
+                sendResponse(ws, requestId, type, false, null, error.message || 'An unknown error occurred during server creation.');
+            }
+          }
+          break;
+      case Message.UPDATE_SERVER:
+        {
+            const { serverId, config } = payload;
+            const serversDirectory = getSettings().servers_directory;
+            const result = await updateServer(serversDirectory, serverId, config);
             if (result && result.config) {
-                 ws.send(JSON.stringify({ type: 'server_created', payload: { ...result.config, path: result.path } }));
-                 broadcastServerListUpdate(); // リストの更新をブロードキャスト
+                sendResponse(ws, requestId, type, true, { ...result.config, path: result.path });
+                broadcastServerListUpdate();
             } else {
-                 // resultがnullの場合、pathも存在しないので調整
-                 ws.send(JSON.stringify({ type: 'server_creation_failed', payload: { error: 'Failed to create server. It might already exist or the download failed.', path: 'N/A' } }));
-                 // 失敗した場合も、既存のリストを再送してUIの整合性を保つ
-                 broadcastServerListUpdate();
+                sendResponse(ws, requestId, type, false, { serverId }, 'Failed to update server.');
             }
         }
         break;
-      case 'createServer': // 古いAPI, 将来的に削除
-        const createResult = await updateServer(getSettings().servers_directory, null, payload.config);
-        if (createResult && createResult.config) {
-            ws.send(JSON.stringify({ type: 'serverCreated', payload: { ...createResult.config, path: createResult.path } }));
-            broadcastServerListUpdate();
-        } else {
-            // エラーハンドリングを追加
-            ws.send(JSON.stringify({ type: 'server_creation_failed', payload: { serverId: payload.config.server_id, error: 'Failed to create server.' } }));
+      case Message.UPDATE_SERVER_PROPERTIES:
+        {
+            const { serverId, properties } = payload;
+            const serversDirectory = getSettings().servers_directory;
+            const result = await updateServer(serversDirectory, serverId, { properties });
+            if (result && result.config) {
+                sendResponse(ws, requestId, type, true, { ...result.config, path: result.path });
+                broadcastServerListUpdate();
+            } else {
+                sendResponse(ws, requestId, type, false, { serverId }, 'Failed to update server properties.');
+            }
         }
         break;
-      case 'updateServer':
-        const updateResult = await updateServer(getSettings().servers_directory, payload.serverId, payload.config);
-        ws.send(JSON.stringify({ type: 'serverUpdated', payload: { ...updateResult.config, path: updateResult.path } }));
-        broadcastServerListUpdate();
-        break;
-      case 'deleteServer':
-        const deleteResult = deleteServer(getSettings().servers_directory, payload.serverId);
-        ws.send(JSON.stringify({ type: 'serverDeleted', payload: { serverId: payload.serverId, success: deleteResult.success, path: deleteResult.path } }));
-        broadcastServerListUpdate();
+      case Message.DELETE_SERVER:
+        {
+            const { serverId } = payload;
+            const serversDirectory = getSettings().servers_directory;
+            const result = await deleteServer(serversDirectory, serverId);
+            sendResponse(ws, requestId, type, result.success, { serverId, path: result.path }, result.error || (result.success ? null : 'Failed to delete server.'));
+            if(result.success) {
+                broadcastServerListUpdate();
+            }
+        }
         break;
 
-      case 'control_server':
+      case Message.CONTROL_SERVER:
         {
             const { serverId, action } = payload;
             console.log(`Received control request for server ${serverId}: ${action}`);
             const serversDirectory = getSettings().servers_directory;
             try {
+                const onUpdate = (update) => {
+                    ws.send(JSON.stringify({
+                        type: Message.SERVER_UPDATE,
+                        payload: { serverId, ...update }
+                    }));
+                };
+
                 if (action === 'start') {
-                    // サーバーの状態更新をManagerに通知するためのコールバック
-                    const onUpdate = (update) => {
-                        // この接続（ws）経由でManagerに更新情報を送信
-                        ws.send(JSON.stringify({
-                            type: 'server_update',
-                            payload: {
-                                serverId,
-                                type: update.type,
-                                payload: update.payload
-                            }
-                        }));
-                    };
-                    await startServer(serversDirectory, serverId, onUpdate);
+                    await startServer(serversDirectory, serverId, ws, onUpdate);
+                    sendResponse(ws, requestId, type, true, { serverId, action: 'start' });
                 } else if (action === 'stop') {
                     await stopServer(serverId);
-                    // サーバー停止は serverManager の 'close' イベントで検知され、
-                    // onUpdate コールバックを通じて通知されるので、ここでの個別通知は不要。
+                    sendResponse(ws, requestId, type, true, { serverId, action: 'stop' });
                 } else {
-                    console.warn(`[Agent] Unknown server control action: ${action}`);
+                    throw new Error(`Unknown server control action: ${action}`);
                 }
             } catch (error) {
                 console.error(`[Agent] Failed to execute action '${action}' for server ${serverId}:`, error);
-                ws.send(JSON.stringify({ type: 'server_action_failed', payload: { serverId, action, error: error.message } }));
+
+                if (action === 'start' && error.code === 'EULA_NOT_ACCEPTED') {
+                    // EULA未同意の場合、特別なメッセージをManagerに送信
+                    ws.send(JSON.stringify({
+                        type: Message.REQUIRE_EULA_AGREEMENT,
+                        requestId: requestId,
+                        payload: {
+                            serverId: serverId,
+                            eulaContent: error.eulaContent
+                        }
+                    }));
+                    // この時点では失敗応答はせず、ユーザーの操作を待つ
+                } else {
+                    // その他の起動失敗
+                    if (action === 'start') {
+                       ws.send(JSON.stringify({
+                           type: Message.SERVER_UPDATE,
+                           payload: { serverId, type: 'status_change', payload: 'stopped' }
+                       }));
+                       ws.send(JSON.stringify({
+                           type: Message.NOTIFY_WARN,
+                           payload: { serverId, message: `サーバーの起動に失敗しました。<br>詳細: ${error.message}` }
+                       }));
+                    }
+                    sendResponse(ws, requestId, type, false, { serverId, action }, error.message);
+                }
+            }
+        }
+        break;
+      
+      case Message.ACCEPT_EULA:
+        {
+            const { serverId } = payload;
+            const serversDirectory = getSettings().servers_directory;
+            const result = await acceptEula(serversDirectory, serverId);
+            if (result.success) {
+                // EULA同意に成功したら、再度サーバー起動を試みる
+                console.log(`[Agent] EULA accepted for ${serverId}. Retrying start...`);
+                // 元のCONTROL_SERVERリクエストと同じrequestIdを再利用する
+                const originalRequestId = requestId;
+                try {
+                    const onUpdate = (update) => {
+                        ws.send(JSON.stringify({
+                            type: Message.SERVER_UPDATE,
+                            payload: { serverId, ...update }
+                        }));
+                    };
+                    await startServer(serversDirectory, serverId, ws, onUpdate);
+                    sendResponse(ws, originalRequestId, Message.CONTROL_SERVER, true, { serverId, action: 'start' });
+                } catch (error) {
+                     console.error(`[Agent] Failed to restart server ${serverId} after EULA acceptance:`, error);
+                     sendResponse(ws, originalRequestId, Message.CONTROL_SERVER, false, { serverId, action: 'start' }, error.message);
+                }
+            } else {
+                sendResponse(ws, requestId, type, false, { serverId }, result.error || 'Failed to accept EULA.');
             }
         }
         break;
 
-      case 'installJava':
+      case Message.INSTALL_JAVA:
         {
-            const { agentId, javaInstallData } = payload; // agentIdとjavaInstallDataを取得
-            const { version: javaVersion, downloadUrl, fileSize } = javaInstallData;
+            const { version: javaVersion, downloadUrl } = payload;
 
             try {
                 const installDir = getJavaInstallDir(javaVersion);
                 const archivePath = path.join(os.tmpdir(), `java-archive-${javaVersion}${path.extname(downloadUrl)}`);
 
-                // ダウンロード開始をManagerに通知
-                ws.send(JSON.stringify({
-                    type: 'java-install-status',
-                    payload: { agentId, type: 'progress', progress: 0, message: 'ダウンロード中...' }
-                }));
+                const onProgress = (progress, downloaded, total) => {
+                    const message = `Java ${javaVersion} をダウンロード中... ${progress}%`;
+                    sendProgress(ws, requestId, type, { status: 'downloading', message, progress });
+                };
 
-                // ダウンロード
-                await downloadFile(downloadUrl, archivePath, (progress) => {
-                    ws.send(JSON.stringify({
-                        type: 'java-install-status',
-                        payload: { agentId, type: 'progress', progress: progress, message: `ダウンロード中: ${progress}%` }
-                    }));
-                });
+                sendProgress(ws, requestId, type, { status: 'downloading', message: `Java ${javaVersion} のダウンロード準備中...`, progress: 0 });
+                await downloadFile(downloadUrl, archivePath, onProgress);
 
-                // 展開開始をManagerに通知
-                ws.send(JSON.stringify({
-                    type: 'java-install-status',
-                    payload: { agentId, type: 'progress', progress: 100, message: '展開中...' }
-                }));
+                const onExtractProgress = (progressPayload) => {
+                    // 展開処理は詳細な%進捗が取れないため、progress: 100 のままとする
+                    sendProgress(ws, requestId, type, { ...progressPayload, progress: 100 });
+                };
+                await extractArchive(archivePath, installDir, onExtractProgress);
 
-                // 展開
-                await extractArchive(archivePath, installDir);
-
-                // Java実行パスの取得
                 const javaExecutable = getJavaExecutablePath(installDir);
-
-                // 一時ファイルの削除
                 fs.unlinkSync(archivePath);
+                
+                sendResponse(ws, requestId, type, true, { javaVersion, installDir, javaExecutable });
 
-                // 成功をManagerに通知
-                ws.send(JSON.stringify({
-                    type: 'java-install-status',
-                    payload: { agentId, type: 'success', installDir, javaExecutable }
-                }));
             } catch (error) {
                 console.error(`[Agent] Failed to install Java ${javaVersion}:`, error);
-                // 失敗をManagerに通知
-                ws.send(JSON.stringify({
-                    type: 'java-install-status',
-                    payload: { agentId, type: 'error', error: error.message }
-                }));
+                sendResponse(ws, requestId, type, false, { javaVersion }, error.message);
             }
         }
         break;

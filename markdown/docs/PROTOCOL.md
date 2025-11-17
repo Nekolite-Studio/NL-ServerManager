@@ -1,64 +1,61 @@
-# NL-ServerManager Communication Protocol
+# 通信プロトコル仕様
 
-This document defines the communication protocol between the **Manager** (Electron UI) and the **Agent** (Node.js backend) using WebSockets, as well as the Inter-Process Communication (IPC) channels within the Manager.
+このドキュメントは、`manager`と`agent`間でやり取りされるWebSocketメッセージの仕様を定義します。プロトコルの定義は[`common/protocol.js`](../../../common/protocol.js)に集約されています。
 
-## 1. General Principles
+## 1. 基本的なメッセージ構造
 
-- **Naming Convention**: All WebSocket message types and IPC channel names use `kebab-case`.
-- **Data Format**: All messages are JSON objects.
-- **Asynchronous Responses**: For request/response patterns, responses should be wrapped in a consistent format:
-  - **Success**: `{ success: true, payload: { ... } }`
-  - **Failure**: `{ success: false, error: { message: "Error summary", details: "..." } }`
-- **Broadcasts**: Events initiated by the Agent (e.g., server status change) are broadcast to all connected Managers.
+送受信される全てのメッセージは、以下の基本構造を持つJSONオブジェクトです。
 
-## 2. WebSocket Protocol (Manager ↔ Agent)
+```json
+{
+  "type": "message-type-string",
+  "requestId": "unique-id-for-request",
+  "payload": { "...": "..." },
+  "operation": "original-operation-type",
+  "success": true,
+  "error": { "message": "...", "details": "..." }
+}
+```
 
-### 2.1. Manager → Agent
+-   **`type` (必須):** メッセージの種類を識別する文字列。
+-   **`requestId` (任意):** `manager`が`agent`に操作を要求する際に生成する一意のID。`agent`からの応答にはこのIDが含まれ、`manager`はどの要求に対する応答なのかを特定できます。
+-   **`payload` (任意):** 送信するデータ本体。内容は`type`に依存します。
+-   **`operation` (任意):** `agent`が操作結果を返す際に、元の操作の`type`を格納します。
+-   **`success` & `error` (任意):** `agent`が操作結果を返す際に、処理の成否とエラー情報を示します。
 
-| Type                  | Payload                               | Description                                                                 |
-| --------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
-| `get-system-info`     | `{}`                                  | Requests basic system information from the Agent (OS, Arch, etc.).          |
-| `get-all-servers`     | `{}`                                  | Requests the full list of servers managed by the Agent.                     |
-| `create-server`       | `{ versionId: string }`               | Requests the creation of a new Minecraft server for a specific version.     |
-| `update-server`       | `{ serverId: string, config: object }`| Updates the configuration of an existing server.                            |
-| `delete-server`       | `{ serverId: string }`                | Deletes a server directory and its configuration.                           |
-| `control-server`      | `{ serverId: string, action: 'start' \| 'stop' }` | Starts or stops a specific Minecraft server.                            |
-| `install-java`        | `{ javaInstallData: object }`         | Requests the download and installation of a specific Java version.          |
+## 2. 通信パターン
 
-### 2.2. Agent → Manager
+通信は、大きく3つのパターンに分類できます。
 
-| Type                     | Payload                                      | Description                                                                                             |
-| ------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `system-info-response`   | `{ os: string, arch: string, ... }`          | Response to `get-system-info`.                                                                          |
-| `server-list-update`     | `Array<object>`                              | Broadcasts the updated list of all servers. Sent after any operation that changes the server list.      |
-| `server-update`          | `{ serverId: string, status: string, log?: string }` | Broadcasts real-time updates for a single server (e.g., status change from 'stopped' to 'running'). |
-| `java-install-status`    | `{ type: 'progress' \| 'success' \| 'error', ... }` | Provides real-time status updates for a Java installation process.                                |
-| `operation-result`       | `{ success: boolean, operation: string, payload?: any, error?: object }` | A generic response for operations like create, update, delete, control, providing success or failure status. |
+1.  **Request/Response:** `manager`がある操作を要求し、`agent`がその結果を一度だけ返します。（例: `CREATE_SERVER`）
+2.  **進捗更新 + Request/Response:** 時間のかかる操作に対し、`agent`が複数回にわたり進捗を通知し、最後に最終結果を返します。（例: `INSTALL_JAVA`）
+3.  **Push通知:** `agent`側で状態変化が起きた際に、`manager`からの要求なしに自発的に情報を送信します。（例: `SERVER_UPDATE`）
 
-## 3. IPC Protocol (Main ↔ Renderer)
+## 3. メッセージ一覧
 
-### 3.1. Renderer → Main
+### 3.1. Manager -> Agent
 
-| Channel                 | Arguments                                    | Description                                                          |
-| ----------------------- | -------------------------------------------- | -------------------------------------------------------------------- |
-| `renderer-ready`        | `()`                                         | Notifies the main process that the UI is loaded and ready.           |
-| `request-agent-list`    | `()`                                         | Requests the current list of all configured agents.                  |
-| `add-agent`             | `(config: object)`                           | Adds a new agent and connects to it.                                 |
-| `update-agent-settings` | `({ agentId: string, config: object })`      | Updates the settings for an existing agent.                          |
-| `delete-agent`          | `({ agentId: string })`                      | Deletes an agent configuration.                                      |
-| `proxy-to-agent`        | `({ agentId: string, message: object })`     | A proxy channel to send any WebSocket message to a specific agent.   |
-| `get-minecraft-versions`| `()`                                         | Requests the list of available Minecraft versions from Mojang.       |
-| `get-java-download-info`| `(params: object)`                           | (ipc.handle) Requests Java download info from the Adoptium API.      |
+| メッセージタイプ | 目的 | `payload` の内容 | 応答/関連メッセージ |
+| :--- | :--- | :--- | :--- |
+| `GET_SYSTEM_INFO` | Agentが動作しているマシンの基本情報（OS, アーキテクチャ）を要求する。 | なし | `SYSTEM_INFO_RESPONSE` |
+| `GET_ALL_SERVERS` | Agentが管理する全てのサーバーのリストを要求する。 | なし | `SERVER_LIST_UPDATE` |
+| `GET_METRICS` | Agentが動作しているマシンの現在のメトリクス（CPU/RAM使用率など）を要求する。 | なし | `METRICS_DATA` |
+| `CREATE_SERVER` | 新規Minecraftサーバーの作成を要求する。 | `{ "versionId": "1.18.2" }` | `PROGRESS_UPDATE`, `OPERATION_RESULT` |
+| `UPDATE_SERVER` | 既存サーバーの設定（名前など）を更新する。 | `{ "serverId": "...", "config": { "server_name": "New Name" } }` | `OPERATION_RESULT` |
+| `UPDATE_SERVER_PROPERTIES` | 既存サーバーの`server.properties`の内容を更新する。 | `{ "serverId": "...", "properties": { "pvp": false, "motd": "Hello" } }` | `OPERATION_RESULT` |
+| `DELETE_SERVER` | 既存サーバーを削除する。 | `{ "serverId": "..." }` | `OPERATION_RESULT` |
+| `CONTROL_SERVER` | サーバーの起動または停止を要求する。 | `{ "serverId": "...", "action": "start" \| "stop" }` | `OPERATION_RESULT`, `SERVER_UPDATE`, `REQUIRE_EULA_AGREEMENT` |
+| `INSTALL_JAVA` | 指定バージョンのJava実行環境のインストールを要求する。 | `{ "version": "17", "downloadUrl": "..." }` | `PROGRESS_UPDATE`, `OPERATION_RESULT` |
+| `ACCEPT_EULA` | ユーザーがEULAに同意したことを通知する。 | `{ "serverId": "..." }` | `OPERATION_RESULT` |
 
-### 3.2. Main → Renderer
+### 3.2. Agent -> Manager
 
-| Channel                | Arguments                               | Description                                                              |
-| ---------------------- | --------------------------------------- | ------------------------------------------------------------------------ |
-| `initial-load-complete`| `()`                                    | Sent after the main process has finished its initial setup.              |
-| `agent-list`           | `(agents: Array<object>)`               | Sends the full list of agents with their status.                         |
-| `agent-status-update`  | `(agent: object)`                       | Sends an update for a single agent's status or configuration.            |
-| `agent-log-entry`      | `({ agentId: string, message: string })`| Sends a new log message for a specific agent.                            |
-| `agent-data`           | `({ agentId: string, data: object })`   | A generic channel for forwarding data received from an agent. **(To be refactored)** |
-| `minecraft-versions`   | `({ success: boolean, versions?: Array, error?: string })` | Sends the fetched list of Minecraft versions or an error. |
-| `server-list-update`   | `({ agentId: string, servers: Array })` | Relays the server list update from an agent.                             |
-| `operation-failed`     | `({ agentId: string, error: string })`  | Notifies the UI of a failed operation. **(To be refactored/unified)**    |
+| メッセージタイプ | 目的 | `payload` の内容 | 関連メッセージ |
+| :--- | :--- | :--- | :--- |
+| `SYSTEM_INFO_RESPONSE` | `GET_SYSTEM_INFO`に対する応答。 | `{ "os": "linux", "arch": "x64" }` | `GET_SYSTEM_INFO` |
+| `SERVER_LIST_UPDATE` | Agentが管理する全サーバーのリストを通知する。Agent接続時やサーバーの増減時に送信される。 | `[ { server_id: "...", server_name: "...", ... }, ... ]` | `GET_ALL_SERVERS` |
+| `SERVER_UPDATE` | 個別のサーバーの非同期な状態変化（ステータス変更、ログ追加など）をリアルタイムで通知する。 | `{ "serverId": "...", "type": "status_change" \| "log", "payload": "..." }` | `CONTROL_SERVER` |
+| `METRICS_DATA` | `GET_METRICS`に対する応答。現在のマシンメトリクスを通知する。 | `{ "cpuUsage": "15.5", "ramUsage": "45.2", ... }` | `GET_METRICS` |
+| `OPERATION_RESULT` | `manager`からの要求に対する最終的な処理結果（成功/失敗）を通知する。 | 操作が成功した場合は関連データ、失敗した場合はエラー詳細。 | `CREATE_SERVER`, `UPDATE_SERVER`, etc. |
+| `PROGRESS_UPDATE` | 時間のかかる操作の進捗状況を通知する。 | `{ "status": "downloading" \| "extracting", "message": "...", "progress": 50 }` | `CREATE_SERVER`, `INSTALL_JAVA` |
+| `REQUIRE_EULA_AGREEMENT` | EULAへの同意が必要であることを通知する。 | `{ "serverId": "...", "eulaContent": "..." }` | `CONTROL_SERVER` |
