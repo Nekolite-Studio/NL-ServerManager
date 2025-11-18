@@ -1,13 +1,14 @@
-const WebSocket = require('ws');
-const os = require('os');
-const path = require('path');
-const fs = require('fs'); // fsモジュールを追加
-const si = require('systeminformation');
-const { initializeSettings, getSettings } = require('./src/settingsManager');
-const {
+import WebSocket from 'ws';
+import os from 'os';
+import path from 'path';
+import fs from 'fs'; // fsモジュールを追加
+import si from 'systeminformation';
+import { initializeSettings, getSettings } from './src/settingsManager.js';
+
+import {
     loadAllServers,
     getAllServers,
-    createServer, // createServerをインポート
+    createServer,
     updateServer,
     deleteServer,
     startServer,
@@ -19,9 +20,10 @@ const {
     extractArchive,
     getJavaExecutablePath,
     downloadFile,
-    updateServerProperties
-} = require('./src/serverManager');
-const { Message } = require('../common/protocol');
+    updateServerProperties,
+} from './src/serverManager.js';
+
+import { Message } from '../common/protocol.js';
 
 // --- 初期化処理 ---
 

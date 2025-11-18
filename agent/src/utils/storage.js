@@ -1,13 +1,13 @@
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 /**
  * ホームディレクトリを考慮してパスを解決する
  * @param {string} filePath - チルダを含む可能性のあるパス
  * @returns {string} - 絶対パス
  */
-function resolvePath(filePath) {
+export function resolvePath(filePath) {
   if (filePath.startsWith('~')) {
     return path.join(os.homedir(), filePath.slice(1));
   }
@@ -19,7 +19,7 @@ function resolvePath(filePath) {
  * @param {string} filePath - ファイルパス
  * @returns {object | null} - パースされたオブジェクト、またはファイルが存在しない/エラーの場合はnull
  */
-function loadJsonSync(filePath) {
+export function loadJsonSync(filePath) {
   const resolvedPath = resolvePath(filePath);
   if (!fs.existsSync(resolvedPath)) {
     return null;
@@ -38,9 +38,9 @@ function loadJsonSync(filePath) {
  * ディレクトリが存在しない場合は再帰的に作成する
  * @param {string} filePath - ファイルパス
  * @param {object} data - 書き込むデータ
- * @returns {boolean} - 成功した場合はtrue、失敗した場合はfalse
+ * @returns {object} - { success: boolean, resolvedPath: string }
  */
-function saveJsonSync(filePath, data) {
+export function saveJsonSync(filePath, data) {
   const resolvedPath = resolvePath(filePath);
   try {
     const directory = path.dirname(resolvedPath);
@@ -55,9 +55,3 @@ function saveJsonSync(filePath, data) {
     return { success: false, resolvedPath };
   }
 }
-
-module.exports = {
-  resolvePath,
-  loadJsonSync,
-  saveJsonSync,
-};

@@ -12,6 +12,10 @@
     "build": "npm run build -ws"
   },
   "devDependencies": {
+    "commonjs-to-es-module-codemod": "^0.5.7",
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "jscodeshift": "^17.3.0"
   }
 }

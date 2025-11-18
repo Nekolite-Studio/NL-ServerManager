@@ -1,4 +1,4 @@
-const { loadJsonSync, saveJsonSync, resolvePath } = require('./utils/storage');
+import { loadJsonSync, saveJsonSync, resolvePath } from './utils/storage.js';
 
 const SETTINGS_FILE_PATH = '~/.nekolite/server-manager/mc/agent/settings.json';
 const SCHEMA_VERSION = '1.0.0';
@@ -36,7 +36,9 @@ function initializeSettings() {
   if (!settings) {
     console.log('[SettingsManager] Settings file not found. Creating with default settings...');
     settings = getDefaultSettings();
-    const success = saveJsonSync(SETTINGS_FILE_PATH, settings);
+    // 修正箇所: saveJsonSyncはオブジェクトを返すため、successプロパティを分割代入で取得
+    const { success } = saveJsonSync(SETTINGS_FILE_PATH, settings);
+    
     if (!success) {
         // 保存に失敗した場合は、致命的なエラーとしてプロセスを終了するか、
         // フォールバックとしてデフォルト設定をメモリ上でのみ使用する。
@@ -73,7 +75,9 @@ function getSettings() {
  * @returns {boolean} - 保存の成否
  */
 function saveSettings(settings) {
-  const success = saveJsonSync(SETTINGS_FILE_PATH, settings);
+  // 修正箇所: successプロパティを取得
+  const { success } = saveJsonSync(SETTINGS_FILE_PATH, settings);
+  
   if (success) {
     // インメモリキャッシュも更新
     agentSettings = { ...settings };
@@ -83,7 +87,7 @@ function saveSettings(settings) {
   return success;
 }
 
-module.exports = {
+export default {
   initializeSettings,
   getSettings,
   saveSettings,

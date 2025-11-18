@@ -1,15 +1,15 @@
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const { spawn } = require('child_process');
-const { v4: uuidv4 } = require('uuid');
-const { Rcon } = require('rcon-client');
-const tar = require('tar');
-const unzipper = require('unzipper');
-const si = require('systeminformation');
-const { loadJsonSync, saveJsonSync, resolvePath, readJson, writeJson } = require('./utils/storage');
-const { Message, ServerStatus } = require('../../common/protocol');
-const { ServerPropertiesSchema } = require('../../common/property-schema');
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
+import { spawn } from 'child_process';
+import { v4 as uuidv4 } from 'uuid';
+import { Rcon } from 'rcon-client';
+import tar from 'tar';
+import unzipper from 'unzipper';
+import si from 'systeminformation';
+import { loadJsonSync, saveJsonSync, resolvePath, readJson, writeJson } from './utils/storage.js';
+import { Message, ServerStatus } from '../../common/protocol.js';
+import { ServerPropertiesSchema } from '../../common/property-schema.js';
 
 const SERVER_CONFIG_FILENAME = 'nl-server_manager.json';
 const SCHEMA_VERSION = '1.0.0';
@@ -934,41 +934,6 @@ async function acceptEula(serversDirectory, serverId) {
 }
 
 /**
- * eula.txtを更新してEULAに同意する
- * @param {string} serversDirectory
- * @param {string} serverId
- * @returns {Promise<{success: boolean, error?: string}>}
- */
-async function acceptEula(serversDirectory, serverId) {
-    const serverDir = path.join(resolvePath(serversDirectory), serverId);
-    const eulaPath = path.join(serverDir, 'eula.txt');
-    try {
-        let content = '';
-        if (fs.existsSync(eulaPath)) {
-            content = fs.readFileSync(eulaPath, 'utf-8');
-            if (content.match(/^\s*eula\s*=\s*false\s*$/m)) {
-                // `eula=false` を `eula=true` に置換
-                content = content.replace(/^\s*eula\s*=\s*false\s*$/m, 'eula=true');
-            } else if (!content.match(/^\s*eula\s*=\s*true\s*$/m)) {
-                // `eula=true` も `eula=false` もない場合は追記する
-                content += '\neula=true\n';
-            }
-        } else {
-            // ファイルが存在しない場合は、EULAのURLを含む内容で新規作成
-            content = `# By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).\n#\n#${new Date().toString()}\neula=true\n`;
-        }
-        
-        fs.writeFileSync(eulaPath, content, 'utf-8');
-        console.log(`[ServerManager] EULA accepted for server ${serverId}.`);
-        return { success: true };
-    } catch (error) {
-        console.error(`[ServerManager] Failed to write eula.txt for server ${serverId}:`, error);
-        return { success: false, error: error.message };
-    }
-}
-
-
-/**
  * server.propertiesファイルをオブジェクトとして読み込む
  * @param {string} serverPath
  * @returns {Promise<Object>}
@@ -1043,7 +1008,7 @@ async function updateServerProperties(serversDirectory, serverId, newProperties)
     }
 }
 
-module.exports = {
+export {
     loadAllServers,
     getServer,
     getAllServers,
