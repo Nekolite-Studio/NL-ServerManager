@@ -5,6 +5,7 @@ const axios = require('axios'); // axiosをインポート
 const { v4: uuidv4 } = require('uuid');
 const { getAgents, setAgents, getWindowBounds, setWindowBounds } = require('./src/storeManager');
 const { Message } = require('../common/protocol');
+const { ServerPropertiesAnnotations } = require('../common/property-schema');
 
 // --- Agent Management ---
 
@@ -102,12 +103,17 @@ function connectToAgent(id) {
             const parsedData = JSON.parse(data.toString());
             const { type, requestId, payload, operation } = parsedData;
 
-            if (type !== Message.METRICS_UPDATE && type !== Message.METRICS_DATA) {
+            if (type !== Message.GAME_SERVER_METRICS_UPDATE && type !== Message.PHYSICAL_SERVER_METRICS_UPDATE) {
                  console.log(`Data from ${agent.config.alias}:`, parsedData);
             }
 
             switch(type) {
-                case Message.METRICS_UPDATE:
+                case Message.GAME_SERVER_METRICS_UPDATE:
+                    sendToRenderer(Message.GAME_SERVER_METRICS_UPDATE, { agentId: id, payload });
+                    break;
+                case Message.PHYSICAL_SERVER_METRICS_UPDATE:
+                    sendToRenderer(Message.PHYSICAL_SERVER_METRICS_UPDATE, { agentId: id, payload });
+                    break;
                 case Message.METRICS_DATA:
                     sendToRenderer(Message.METRICS_DATA, { agentId: id, payload });
                     break;
@@ -123,9 +129,6 @@ function connectToAgent(id) {
                         if (parsedData.success) {
                             resolve(payload);
                         } else {
-                            // reject(new Error(parsedData.error?.message || 'Operation failed'));
-                            // ↑ このrejectがコンソールにキャッチされないエラーとして表示される原因。
-                            // UIへの通知は下のsendToRendererで行われるため、ここでは単に失敗したことをログに出す程度でよい。
                             console.log(`Operation ${operation} (${requestId}) failed: ${parsedData.error?.message || 'Operation failed'}`);
                         }
                         pendingOperations.delete(requestId);
@@ -421,6 +424,11 @@ app.whenReady().then(() => {
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  // --- Server Properties Annotations ---
+  ipcMain.handle('get-server-properties-annotations', (event) => {
+    return ServerPropertiesAnnotations;
   });
 
   // --- Minecraft Version Handling ---

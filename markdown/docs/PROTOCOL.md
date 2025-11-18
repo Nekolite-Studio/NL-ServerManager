@@ -51,6 +51,8 @@
 | `GET_SYSTEM_INFO` | Agentが動作しているマシンの基本情報（OS, アーキテクチャ）を要求する。 | なし | `SYSTEM_INFO_RESPONSE` |
 | `GET_ALL_SERVERS` | Agentが管理する全てのサーバーのリストを要求する。 | なし | `SERVER_LIST_UPDATE` |
 | `GET_METRICS` | Agentが動作しているマシンの現在のメトリクス（CPU/RAM使用率など）を要求する。 | なし | `METRICS_DATA` |
+| `START_METRICS_STREAM` | 指定されたターゲット（ゲーム/物理サーバー）のメトリクスストリーミングを開始する。 | `{ "streamId": "...", "targetType": "gameServer" \| "physicalServer", "targetId": "..." }` | `GAME_SERVER_METRICS_UPDATE`, `PHYSICAL_SERVER_METRICS_UPDATE` |
+| `STOP_METRICS_STREAM` | 指定されたメトリクスストリーミングを停止する。 | `{ "streamId": "...", "targetType": "gameServer" \| "physicalServer", "targetId": "..." }` | |
 | `CREATE_SERVER` | 新規Minecraftサーバーの作成を要求する。 | `{ "versionId": "1.18.2" }` | `PROGRESS_UPDATE`, `OPERATION_RESULT` |
 | `UPDATE_SERVER` | 既存サーバーの設定（名前、起動構成など）を更新する。 | `{ "serverId": "...", "config": { "runtime": { "max_memory": 4096 } } }` | `OPERATION_RESULT` |
 | `UPDATE_SERVER_PROPERTIES` | 既存サーバーの`server.properties`の内容を更新する。 | `{ "serverId": "...", "properties": { "pvp": false, "motd": "Hello" } }` | `OPERATION_RESULT` |
@@ -67,6 +69,8 @@
 | `SERVER_LIST_UPDATE` | Agentが管理する全サーバーのリストを通知する。Agent接続時やサーバーの増減時に送信される。 | `[ { server_id: "...", server_name: "...", ... }, ... ]` | `GET_ALL_SERVERS` |
 | `SERVER_UPDATE` | 個別のサーバーの非同期な状態変化（ステータス変更、ログ追加など）をリアルタイムで通知する。 | `{ "serverId": "...", "type": "status_change" \| "log", "payload": "..." }`<br>`status_change` の場合、`payload` には `ServerStatus` のいずれかの値が入る。 | `CONTROL_SERVER` |
 | `METRICS_DATA` | `GET_METRICS`に対する応答。現在のマシンメトリクスを通知する。 | `{ "cpuUsage": "15.5", "ramUsage": "45.2", ... }` | `GET_METRICS` |
+| `GAME_SERVER_METRICS_UPDATE` | ゲームサーバーのメトリクスをリアルタイムで通知する（ストリーム）。 | `{ "serverId": "...", "cpu": 10.5, "memory": 2048, "tps": 20.0, ... }` | `START_METRICS_STREAM` |
+| `PHYSICAL_SERVER_METRICS_UPDATE` | 物理サーバーのメトリクスをリアルタイムで通知する（ストリーム）。 | `{ "cpuUsage": "25.0", "ramUsage": "60.1", "diskUsage": "75.3" }` | `START_METRICS_STREAM` |
 | `OPERATION_RESULT` | `manager`からの要求に対する最終的な処理結果（成功/失敗）を通知する。 | 操作が成功した場合は関連データ、失敗した場合はエラー詳細。 | `CREATE_SERVER`, `UPDATE_SERVER`, etc. |
 | `PROGRESS_UPDATE` | 時間のかかる操作の進捗状況を通知する。 | `{ "status": "downloading" \| "extracting", "message": "...", "progress": 50 }` | `CREATE_SERVER`, `INSTALL_JAVA` |
 | `REQUIRE_EULA_AGREEMENT` | EULAへの同意が必要であることを通知する。 | `{ "serverId": "...", "eulaContent": "..." }` | `CONTROL_SERVER` |

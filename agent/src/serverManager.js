@@ -3,11 +3,13 @@ const path = require('path');
 const https = require('https');
 const { spawn } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
+const { Rcon } = require('rcon-client');
 const tar = require('tar');
 const unzipper = require('unzipper');
 const si = require('systeminformation');
-const { loadJsonSync, saveJsonSync, resolvePath } = require('./utils/storage');
+const { loadJsonSync, saveJsonSync, resolvePath, readJson, writeJson } = require('./utils/storage');
 const { Message, ServerStatus } = require('../../common/protocol');
+const { ServerPropertiesSchema } = require('../../common/property-schema');
 
 const SERVER_CONFIG_FILENAME = 'nl-server_manager.json';
 const SCHEMA_VERSION = '1.0.0';
@@ -16,6 +18,8 @@ const SCHEMA_VERSION = '1.0.0';
 const servers = new Map();
 // 実行中のサーバープロセスを管理する
 const runningProcesses = new Map();
+// 実行中のRCONクライアントを管理する
+const runningRconClients = new Map();
 // 実行中のメトリクス収集インターバルを管理する
 const metricsIntervals = new Map();
 
@@ -42,6 +46,31 @@ function getDefaultServerConfig(serverId, serverName, runtimeConfig = {}) {
         auto_start: false,
     };
     return defaultConfig;
+}
+
+/**
+ * サーバー設定から最大メモリ量（MB）を取得する。-Xmx引数をフォールバックとして使用する。
+ * @param {object} serverConfig
+ * @returns {number}
+ */
+function getMaxMemoryFromConfig(serverConfig) {
+    if (serverConfig?.runtime?.max_memory) {
+        return serverConfig.runtime.max_memory;
+    }
+    if (serverConfig?.runtime?.jvm_args) {
+        const xmxArg = serverConfig.runtime.jvm_args.find(arg => arg.startsWith('-Xmx'));
+        if (xmxArg) {
+            const value = xmxArg.substring(4).toUpperCase();
+            const number = parseInt(value, 10);
+            if (value.endsWith('G')) {
+                return number * 1024;
+            }
+            if (value.endsWith('M')) {
+                return number;
+            }
+        }
+    }
+    return 0; // 不明な場合は0
 }
 
 /**
@@ -270,6 +299,7 @@ function getJavaExecutablePath(javaInstallDir) {
 async function loadAllServers(serversDirectory) {
     servers.clear();
     runningProcesses.clear();
+    runningRconClients.clear();
     const resolvedServersDir = resolvePath(serversDirectory);
 
     if (!fs.existsSync(resolvedServersDir)) {
@@ -603,30 +633,6 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
 
         runningProcesses.set(serverId, process);
 
-        // メトリクス収集を開始
-        const intervalId = setInterval(async () => {
-            try {
-                const processesData = await si.processes();
-                const processInfo = processesData.list.find(p => p.pid === process.pid);
-
-                if (processInfo && ws && ws.readyState === 1 /* OPEN */) {
-                    const metrics = {
-                        serverId: serverId,
-                        cpu: processInfo.cpu,
-                        memory: processInfo.mem,
-                    };
-                    // METRICS_UPDATEは未定義なので、次のステップでprotocol.jsに追加する
-                    ws.send(JSON.stringify({ type: Message.METRICS_UPDATE, payload: metrics }));
-                }
-            } catch (err) {
-                console.error(`[ServerManager] Failed to collect metrics for server ${serverId}:`, err);
-                // エラーが発生したら収集を停止
-                clearInterval(intervalId);
-                metricsIntervals.delete(serverId);
-            }
-        }, 5000); // 5秒ごとに収集
-        metricsIntervals.set(serverId, intervalId);
-
         // ステータスを 'STARTING' に更新し、通知する
         serverConfig.status = ServerStatus.STARTING;
         onUpdate({ type: 'status_change', payload: ServerStatus.STARTING });
@@ -641,6 +647,9 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
                 console.log(`[ServerManager] Server ${serverId} has started successfully.`);
                 serverConfig.status = ServerStatus.RUNNING;
                 onUpdate({ type: 'status_change', payload: ServerStatus.RUNNING });
+
+                // RCON接続を試みる
+                connectRcon(serverId, serverConfig);
             }
         };
 
@@ -655,10 +664,7 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
         process.on('close', (code) => {
             console.log(`[ServerManager] Server process ${serverId} exited with code ${code}.`);
             // メトリクス収集を停止
-            if (metricsIntervals.has(serverId)) {
-                clearInterval(metricsIntervals.get(serverId));
-                metricsIntervals.delete(serverId);
-            }
+            stopMetricsStream(serverId);
             runningProcesses.delete(serverId);
             serverConfig.status = ServerStatus.STOPPED;
             onUpdate({ type: 'status_change', payload: ServerStatus.STOPPED });
@@ -703,12 +709,9 @@ async function stopServer(serverId, onUpdate = () => {}) {
     console.log(`[ServerManager] Sending 'stop' command to server ${serverId}...`);
     
     // 先にメトリクス収集を停止
-    if (metricsIntervals.has(serverId)) {
-        clearInterval(metricsIntervals.get(serverId));
-        metricsIntervals.delete(serverId);
-    }
+stopMetricsStream(serverId);
 
-    // ステータスを 'STOPPING' に更新
+// ステータスを 'STOPPING' に更新
     if (serverConfig) {
         serverConfig.status = ServerStatus.STOPPING;
         onUpdate({ type: 'status_change', payload: ServerStatus.STOPPING });
@@ -717,6 +720,14 @@ async function stopServer(serverId, onUpdate = () => {}) {
     try {
         // 'stop'コマンドを標準入力に書き込む
         process.stdin.write('stop\n');
+
+        // RCONクライアントが接続されていれば切断する
+        if (runningRconClients.has(serverId)) {
+            console.log(`[ServerManager] Disconnecting RCON client for server ${serverId}.`);
+            const rcon = runningRconClients.get(serverId);
+            rcon.end();
+            runningRconClients.delete(serverId);
+        }
         
         // TODO: タイムアウトを設け、指定時間内に終了しない場合は process.kill() を呼ぶ
         
@@ -735,6 +746,165 @@ async function stopServer(serverId, onUpdate = () => {}) {
  * @param {string} serverId
  * @returns {Promise<{success: boolean, error?: string}>}
  */
+/**
+ * RCONクライアントをサーバーに接続する
+ * @param {string} serverId
+ * @param {object} serverConfig
+ */
+async function connectRcon(serverId, serverConfig) {
+    // server.propertiesからRCON設定を読み込む処理が未実装のため、serverConfigから直接取得する
+    // 将来的には、server.propertiesをパースして使うように変更する
+    const rconConfig = serverConfig.properties || {};
+    const host = '127.0.0.1'; // Agentと同じマシンで動作している前提
+    const port = rconConfig['rcon.port'];
+    const password = rconConfig['rcon.password'];
+
+    if (!rconConfig['enable-rcon'] || !port || !password) {
+        console.log(`[ServerManager] RCON is not enabled for server ${serverId}. Skipping RCON connection.`);
+        return;
+    }
+
+    if (runningRconClients.has(serverId)) {
+        console.log(`[ServerManager] RCON client for server ${serverId} is already connected or connecting.`);
+        return;
+    }
+
+    console.log(`[ServerManager] Attempting to connect RCON for server ${serverId} at ${host}:${port}...`);
+
+    try {
+        const rcon = new Rcon({ host, port, password });
+
+        rcon.on('connect', () => {
+            console.log(`[ServerManager] RCON connected for server ${serverId}.`);
+            runningRconClients.set(serverId, rcon);
+        });
+
+        rcon.on('error', (err) => {
+            console.error(`[ServerManager] RCON error for server ${serverId}:`, err.message);
+            runningRconClients.delete(serverId);
+        });
+
+        rcon.on('end', () => {
+            console.log(`[ServerManager] RCON connection ended for server ${serverId}.`);
+            runningRconClients.delete(serverId);
+        });
+
+        await rcon.connect();
+
+    } catch (err) {
+        console.error(`[ServerManager] Failed to initiate RCON connection for server ${serverId}:`, err.message);
+    }
+}
+
+/**
+ * RCON経由でサーバーからTPSとプレイヤー数を取得する
+ * @param {string} serverId
+ * @returns {Promise<object>}
+ */
+async function getGameServerMetrics(serverId) {
+    const rcon = runningRconClients.get(serverId);
+    if (!rcon) {
+        return { tps: 0, players: { current: 0, max: 20, list: [] } };
+    }
+
+    try {
+        const [tpsResponse, listResponse] = await Promise.all([
+            rcon.send('/tps'),
+            rcon.send('/list')
+        ]);
+
+        // TPSのパース
+        let tps = 0;
+        const tpsMatch = tpsResponse.match(/TPS from last 1m, 5m, 15m: ([\d\.]+), ([\d\.]+), ([\d\.]+)/);
+        if (tpsMatch && tpsMatch[1]) {
+            // PaperMCの場合、tpsが20.0*のようにアスタリスクが付くことがある
+            tps = parseFloat(tpsMatch[1].replace('*',''));
+        }
+
+        // プレイヤー数のパース
+        let currentPlayers = 0;
+        let maxPlayers = 20; // デフォルト値
+        const listMatch = listResponse.match(/There are ([\d]+) of a max of ([\d]+) players online:/);
+        if (listMatch) {
+            currentPlayers = parseInt(listMatch[1], 10);
+            maxPlayers = parseInt(listMatch[2], 10);
+        }
+
+        return {
+            tps: tps,
+            players: {
+                current: currentPlayers,
+                max: maxPlayers,
+                list: [], // TODO: プレイヤーリストのパース
+            }
+        };
+
+    } catch (error) {
+        console.warn(`[ServerManager] Failed to get metrics via RCON for server ${serverId}:`, error.message);
+        // RCONがタイムアウトした場合など
+        return { tps: 0, players: { current: 0, max: 20, list: [] } };
+    }
+}
+
+/**
+ * 指定されたゲームサーバーのメトリクス収集ストリームを開始する
+ * @param {import('ws')} ws - WebSocketクライアント
+ * @param {string} serverId - サーバーID
+ */
+function startMetricsStream(ws, serverId) {
+    if (metricsIntervals.has(serverId)) {
+        console.log(`[ServerManager] Metrics stream for server ${serverId} is already running.`);
+        return;
+    }
+
+    console.log(`[ServerManager] Starting metrics stream for server ${serverId}.`);
+
+    const intervalId = setInterval(async () => {
+        const process = runningProcesses.get(serverId);
+        if (!process) {
+            stopMetricsStream(serverId);
+            return;
+        }
+
+        try {
+            const processInfo = await si.processes();
+            const serverProcess = processInfo.list.find(p => p.pid === process.pid);
+            const gameMetrics = await getGameServerMetrics(serverId);
+            // console.log(serverProcess); // デバッグ用
+            if (ws && ws.readyState === 1) {
+                const serverConfig = servers.get(serverId);
+                const metrics = {
+                    serverId: serverId,
+                    cpu: serverProcess ? serverProcess.cpu : 0,
+                    memory: serverProcess ? Math.round(serverProcess.memRss / 1024) : 0, // MB
+                    memoryMax: getMaxMemoryFromConfig(serverConfig), // ヘルパー関数を使用
+                    ...gameMetrics,
+                };
+                ws.send(JSON.stringify({ type: Message.GAME_SERVER_METRICS_UPDATE, payload: metrics }));
+            } else {
+                // WebSocketが切断されたらストリームを停止
+                stopMetricsStream(serverId);
+            }
+        } catch (err) {
+            console.error(`[ServerManager] Failed to collect metrics for server ${serverId}:`, err);
+        }
+    }, 1000); // 1秒ごと
+
+    metricsIntervals.set(serverId, intervalId);
+}
+
+/**
+ * 指定されたゲームサーバーのメトリクス収集ストリームを停止する
+ * @param {string} serverId - サーバーID
+ */
+function stopMetricsStream(serverId) {
+    if (metricsIntervals.has(serverId)) {
+        console.log(`[ServerManager] Stopping metrics stream for server ${serverId}.`);
+        clearInterval(metricsIntervals.get(serverId));
+        metricsIntervals.delete(serverId);
+    }
+}
+
 async function acceptEula(serversDirectory, serverId) {
     const serverDir = path.join(resolvePath(serversDirectory), serverId);
     const eulaPath = path.join(serverDir, 'eula.txt');
@@ -798,6 +968,81 @@ async function acceptEula(serversDirectory, serverId) {
 }
 
 
+/**
+ * server.propertiesファイルをオブジェクトとして読み込む
+ * @param {string} serverPath
+ * @returns {Promise<Object>}
+ */
+async function readProperties(serverPath) {
+    const propertiesPath = path.join(serverPath, 'server.properties');
+    try {
+        const data = await fs.promises.readFile(propertiesPath, 'utf-8');
+        const properties = {};
+        data.split('\n').forEach(line => {
+            if (line.trim() && !line.startsWith('#')) {
+                const [key, ...valueParts] = line.split('=');
+                if (key) {
+                    properties[key.trim()] = valueParts.join('=').trim();
+                }
+            }
+        });
+        return properties;
+    } catch (error) {
+        if (error.code === 'ENOENT') return {}; // ファイルがなければ空オブジェクト
+        throw error;
+    }
+}
+
+/**
+ * オブジェクトを server.properties ファイルに書き込む
+ * @param {string} serverPath
+ * @param {Object} properties
+ */
+async function writeProperties(serverPath, properties) {
+    const propertiesPath = path.join(serverPath, 'server.properties');
+    const data = Object.entries(properties)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+    await fs.promises.writeFile(propertiesPath, data);
+}
+
+/**
+ * サーバーのプロパティを更新する
+ * @param {string} serversDirectory
+ * @param {string} serverId
+ * @param {Object} newProperties
+ */
+async function updateServerProperties(serversDirectory, serverId, newProperties) {
+    const serverPath = path.join(serversDirectory, serverId);
+    const serverConfigPath = path.join(serverPath, SERVER_CONFIG_FILENAME);
+
+    try {
+        const server = await readJson(serverConfigPath);
+        
+        // 新しいプロパティを既存のものとマージ
+        const mergedProperties = { ...(server.properties || {}), ...newProperties };
+
+        // スキーマでパースして不要なプロパティを削除し、型を変換
+        const validatedProperties = ServerPropertiesSchema.parse(mergedProperties);
+        
+        server.properties = validatedProperties;
+        
+        // nl-server_manager.jsonを更新
+        await writeJson(serverConfigPath, server);
+        
+        // server.properties ファイルを更新
+        await writeProperties(serverPath, validatedProperties);
+
+        // メモリ上のキャッシュも更新
+        servers.set(serverId, server);
+
+        return { success: true, properties: validatedProperties };
+    } catch (error) {
+        console.error(`[Agent] Failed to update properties for server ${serverId}:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
 module.exports = {
     loadAllServers,
     getServer,
@@ -807,9 +1052,12 @@ module.exports = {
     deleteServer,
     startServer,
     stopServer,
+    startMetricsStream,
+    stopMetricsStream,
     acceptEula,
     getJavaInstallDir,
     extractArchive,
     getJavaExecutablePath,
-    downloadFile
+    downloadFile,
+    updateServerProperties,
 };

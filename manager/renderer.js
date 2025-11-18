@@ -9,30 +9,49 @@
 
 
 // --- Metrics Polling ---
-let metricsIntervalId = null;
+const activeMetricsStreams = new Set();
+let helpPopupTimer = null;
 
-function fetchAllMetrics() {
-    console.log('[Metrics] Fetching all metrics...');
-    for (const agent of state.physicalServers.values()) {
-        if (agent.status === 'Connected') {
-            window.electronAPI.proxyToAgent(agent.id, { type: 'get-metrics' });
-        }
+function startMetricsStream(targetType, targetId) {
+    const streamId = `${targetType}-${targetId}`;
+    if (activeMetricsStreams.has(streamId)) return;
+
+    console.log(`[Metrics] Starting metrics stream for ${streamId}`);
+    const agentId = targetType === 'physicalServer' ? targetId : getters.allServers().find(s => s.server_id === targetId)?.hostId;
+    if (!agentId) {
+        console.error(`[Metrics] Cannot start stream, agent not found for ${streamId}`);
+        return;
     }
+
+    window.electronAPI.proxyToAgent(agentId, {
+        type: 'start-metrics-stream',
+        payload: { streamId, targetType, targetId }
+    });
+    activeMetricsStreams.add(streamId);
 }
 
-function startGlobalMetricsLoop() {
-    if (metricsIntervalId) return; // すでに開始されている場合は何もしない
-    console.log('[Metrics] Starting global metrics loop.');
-    fetchAllMetrics(); // ループ開始時に即時実行
-    metricsIntervalId = setInterval(fetchAllMetrics, 5000); // 5秒ごとに実行
+function stopMetricsStream(streamId) {
+    if (!activeMetricsStreams.has(streamId)) return;
+
+    console.log(`[Metrics] Stopping metrics stream for ${streamId}`);
+    const [targetType, targetId] = streamId.split('-');
+    const agentId = targetType === 'physicalServer' ? targetId : getters.allServers().find(s => s.server_id === targetId)?.hostId;
+
+    if (agentId) {
+        window.electronAPI.proxyToAgent(agentId, {
+            type: 'stop-metrics-stream',
+            payload: { streamId, targetType, targetId }
+        });
+    }
+    activeMetricsStreams.delete(streamId);
 }
 
-function stopGlobalMetricsLoop() {
-    if (metricsIntervalId) {
-        console.log('[Metrics] Stopping global metrics loop.');
-        clearInterval(metricsIntervalId);
-        metricsIntervalId = null;
-    }
+function stopAllMetricsStreams() {
+    console.log('[Metrics] Stopping all active metrics streams.');
+    // SetをArrayに変換してからループ（ループ内でSetを直接変更するため）
+    [...activeMetricsStreams].forEach(streamId => {
+        stopMetricsStream(streamId);
+    });
 }
 
 
@@ -89,6 +108,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (server) {
             if (payload.type === 'status_change') {
                 server.status = payload.payload;
+                // サーバーが 'running' になり、かつその詳細画面を見ている場合にメトリクスストリームを自動開始
+                if (payload.payload === 'starting' || payload.payload === 'running' && state.currentView === 'detail' && state.selectedServerId === payload.serverId) {
+                    console.log(`[Metrics] Server ${payload.serverId} started. Auto-starting metrics stream.`);
+                    startMetricsStream('gameServer', payload.serverId);
+                }
             } else if (payload.type === 'log') {
                 if (!server.logs) server.logs = [];
                 server.logs.push(payload.payload);
@@ -102,10 +126,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Agentからのメトリクス更新 (プッシュ)
     window.electronAPI.onMetricsData(({ agentId, payload }) => {
+        // これは物理サーバーの全体メトリクス用（従来のポーリング）
         const agent = state.physicalServers.get(agentId);
         if (agent) {
             agent.metrics = payload;
-            updateMetricsUI();
+            if (state.currentView === 'physical') {
+                updateView();
+            }
+        }
+    });
+
+    // 新しいストリーミング形式のメトリクスハンドラ
+    window.electronAPI.onGameServerMetricsUpdate(({ payload }) => {
+        const server = getters.allServers().find(s => s.server_id === payload.serverId);
+        if (server) {
+            Object.assign(server, payload);
+            if (state.currentView === 'detail' && state.selectedServerId === payload.serverId) {
+                updateView();
+            }
+        }
+    });
+
+    window.electronAPI.onPhysicalServerMetricsUpdate(({ agentId, payload }) => {
+        const agent = state.physicalServers.get(agentId);
+        if (agent) {
+            agent.metrics = payload;
+            if (state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId) {
+                updateView();
+            }
         }
     });
 
@@ -203,22 +251,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.serversBeingDeleted.delete(serverId);
              }
              updateView();
-        } else if (operation === 'update-server') {
-            if (success) {
-                showNotification('設定を保存しました。', 'success');
-                // stateのサーバー情報を更新
-                if (state.agentServers.has(agentId)) {
-                   const server = state.agentServers.get(agentId).find(s => s.server_id === payload.serverId);
-                   if (server) {
-                       // payload.config に更新された設定が含まれている想定
-                       Object.assign(server, payload.config);
-                       updateView();
-                   }
+        } else if (operation === 'update-server' || operation === 'update-server-properties') {
+                    if (success) {
+                        showNotification('設定を保存しました。', 'success');
+                        // stateのサーバー情報を更新
+                        if (state.agentServers.has(agentId)) {
+                           const server = state.agentServers.get(agentId).find(s => s.server_id === payload.serverId);
+                           if (server) {
+                               // payload に更新された設定が含まれている想定
+                               if (payload.properties) {
+                                   server.properties = payload.properties;
+                               }
+                               if (payload.config) {
+                                   Object.assign(server, payload.config);
+                               }
+                               updateView();
+                           }
+                        }
+                    } else {
+                        showNotification(`設定の保存に失敗しました: ${error.message}`, 'error');
+                    }
                 }
-            } else {
-                showNotification(`設定の保存に失敗しました: ${error.message}`, 'error');
-            }
-        }
     });
 
     // Agentからの警告通知
@@ -280,15 +333,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // メインコンテナへのイベント委譲
     document.getElementById('app').addEventListener('click', (e) => {
         const target = e.target;
+
+        // ヘルプポップアップ以外がクリックされたら、開いているポップアップを閉じる
+        if (!target.closest('[data-action="show-help"]')) {
+            document.querySelectorAll('[id^="help-popup-"]:not(.hidden)').forEach(p => p.classList.add('hidden'));
+        }
+
         const serverItem = target.closest('.server-item-container');
         const physicalServerItem = target.closest('.physical-server-item');
 
         // 物理サーバーリスト -> 詳細
         if (state.currentView === 'physical' && physicalServerItem) {
-            state.selectedPhysicalServerId = physicalServerItem.dataset.agentId;
+            const agentId = physicalServerItem.dataset.agentId;
+            state.selectedPhysicalServerId = agentId;
             state.currentView = 'physical-detail';
             state.physicalServerDetailActiveTab = 'status';
-            startGlobalMetricsLoop(); // 詳細ビューでもポーリングを継続
+            startMetricsStream('physicalServer', agentId);
             updateView();
             return;
         }
@@ -296,9 +356,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // ゲームサーバーリスト -> 詳細
         if (state.currentView === 'list' && serverItem) {
             if (!target.closest('[data-action]')) { // アクションボタン以外をクリック
-                state.selectedServerId = serverItem.dataset.serverId;
+                const serverId = serverItem.dataset.serverId;
+                state.selectedServerId = serverId;
                 state.currentView = 'detail';
                 state.detailActiveTab = 'console';
+                startMetricsStream('gameServer', serverId);
                 updateView();
             }
             return;
@@ -306,6 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 「戻る」ボタン
         if (target.closest('#back-to-list-btn')) {
+            stopAllMetricsStreams();
             state.currentView = 'list';
             state.selectedServerId = null;
             // リストに戻るときに最新情報を要求
@@ -318,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (target.closest('#back-to-physical-list-btn')) {
+            stopAllMetricsStreams();
             state.currentView = 'physical';
             state.selectedPhysicalServerId = null;
             updateView();
@@ -357,6 +421,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const agentId = state.selectedPhysicalServerId;
 
             switch (action) {
+                case 'show-help':
+                    {
+                        if (helpPopupTimer) {
+                            clearTimeout(helpPopupTimer);
+                            helpPopupTimer = null;
+                        }
+                        const key = actionBtn.dataset.key;
+                        const popup = document.getElementById(`help-popup-${key}`);
+                        if (popup) {
+                            // 他のポップアップを閉じる
+                            document.querySelectorAll('[id^="help-popup-"]').forEach(p => {
+                                if (p.id !== popup.id) p.classList.add('hidden');
+                            });
+                            // 対象のポップアップの表示をトグル
+                            popup.classList.toggle('hidden');
+                        }
+                        e.stopPropagation();
+                    }
+                    break;
                 case 'open-java-install-modal':
                     {
                         const agent = getters.selectedPhysicalServer();
@@ -383,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 type: 'control-server',
                                 payload: { serverId: server.server_id, action: newAction }
                             });
+                            
                         }
                     }
                     break;
@@ -392,49 +476,94 @@ document.addEventListener('DOMContentLoaded', () => {
                         const server = getters.selectedServer();
                         const editor = document.getElementById('properties-editor');
                         if (server && editor) {
-                            const newProperties = { ...server.properties };
-                            Object.keys(server.properties).forEach(key => {
-                                const input = editor.querySelector(`#${key}`);
-                                if (input) {
-                                    if (input.type === 'checkbox') newProperties[key] = input.checked;
-                                    else if (input.type === 'number') newProperties[key] = parseFloat(input.value) || 0;
-                                    else newProperties[key] = input.value;
+                            const newProperties = {};
+                            
+                            // 通常のinputとselectを取得
+                            const inputs = editor.querySelectorAll('.property-input');
+                            inputs.forEach(input => {
+                                const key = input.dataset.key;
+                                if (input.type === 'number') {
+                                    newProperties[key] = parseFloat(input.value);
+                                } else {
+                                    newProperties[key] = input.value;
                                 }
                             });
+
+                            // ラジオボタンの値を取得
+                            const radioButtons = editor.querySelectorAll('.property-input-radio');
+                            const radioGroups = {};
+                            radioButtons.forEach(radio => {
+                                if (!radioGroups[radio.name]) {
+                                    radioGroups[radio.name] = [];
+                                }
+                                radioGroups[radio.name].push(radio);
+                            });
+
+                            for (const key in radioGroups) {
+                                const checkedRadio = radioGroups[key].find(r => r.checked);
+                                if (checkedRadio) {
+                                    newProperties[key] = (checkedRadio.value === 'true');
+                                }
+                            }
+
                             window.electronAPI.proxyToAgent(server.hostId, {
                                 type: 'update-server-properties',
                                 payload: { serverId: server.server_id, properties: newProperties }
                             });
-                            actionBtn.textContent = '保存しました！';
-                            setTimeout(() => { actionBtn.textContent = '変更を保存'; }, 2000);
                         }
                     }
                     break;
                 case 'save-launch-config':
-                    if (serverId) {
-                        const server = getters.selectedServer();
-                        if (server) {
-                            const javaPath = document.getElementById('java-path').value;
-                            const minMemory = document.getElementById('min-memory').value;
-                            const maxMemory = document.getElementById('max-memory').value;
-                            const customArgs = document.getElementById('custom-args').value;
-
-                            const runtimeConfig = {
-                                java_path: javaPath.trim() === '' ? null : javaPath,
-                                min_memory: parseInt(minMemory, 10) || 1024,
-                                max_memory: parseInt(maxMemory, 10) || 2048,
-                                custom_args: customArgs,
-                            };
-
-                            window.electronAPI.proxyToAgent(server.hostId, {
-                                type: 'update-server',
-                                payload: { serverId: server.server_id, config: { runtime: runtimeConfig } }
-                            });
-                        }
-                    }
-                    break;
-
-                case 'delete-server':
+                                    if (serverId) {
+                                        const server = getters.selectedServer();
+                                        if (server) {
+                                            const javaPath = document.getElementById('java-path').value;
+                                            const minMemory = document.getElementById('min-memory').value;
+                                            const maxMemory = document.getElementById('max-memory').value;
+                                            const customArgs = document.getElementById('custom-args').value;
+                
+                                            const runtimeConfig = {
+                                                java_path: javaPath.trim() === '' ? null : javaPath,
+                                                min_memory: parseInt(minMemory, 10) || 1024,
+                                                max_memory: parseInt(maxMemory, 10) || 2048,
+                                                custom_args: customArgs,
+                                            };
+                
+                                            window.electronAPI.proxyToAgent(server.hostId, {
+                                                type: 'update-server',
+                                                payload: { serverId: server.server_id, config: { runtime: runtimeConfig } }
+                                            });
+                                        }
+                                    }
+                                    break;
+                                case 'confirm-reset-property':
+                                    {
+                                        const key = actionBtn.dataset.key;
+                                        if (key) {
+                                            window.showConfirmationModal('この設定をデフォルト値に戻しますか？', () => {
+                                                window.electronAPI.getServerPropertiesAnnotations().then(annotations => {
+                                                    const annotation = annotations[key];
+                                                    if (annotation) {
+                                                        if (annotation.type === 'boolean') {
+                                                            const radioToSelect = document.querySelector(`input[name="${key}"][value="${annotation.default}"]`);
+                                                            if (radioToSelect) {
+                                                                radioToSelect.checked = true;
+                                                            }
+                                                        } else {
+                                                            const input = document.getElementById(key);
+                                                            if (input) {
+                                                                input.value = annotation.default;
+                                                            }
+                                                        }
+                                                        showNotification(`'${key}' をデフォルト値に戻しました`, 'info', `reset-${key}`, 2000);
+                                                    }
+                                                });
+                                            });
+                                        }
+                                    }
+                                    break;
+                
+                                case 'delete-server':
                     if (serverId) {
                         const server = getters.allServers().find(s => s.server_id === serverId);
                         if (server) {
@@ -533,7 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (confirmCreateServerBtn) {
-        confirmCreateServerBtn.addEventListener('click', async () => {
+        confirmCreateServerBtn.addEventListener('click', () => {
             const hostId = document.getElementById('host-select')?.value;
             const versionId = document.getElementById('version-select')?.value;
 
@@ -542,35 +671,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 選択されたMCバージョンから要求Javaバージョンを取得
-            let requiredJavaVersion = null;
-            try {
-                const result = await window.electronAPI.getRequiredJavaVersion({ mcVersion: versionId });
-                if (result.success) {
-                    requiredJavaVersion = result.javaVersion;
-                    console.log(`[Renderer] Required Java version for ${versionId} is: ${requiredJavaVersion}`);
-                } else {
-                    showNotification(`要求Javaバージョンの取得に失敗: ${result.error}`, 'error');
-                    // 必須ではないので、エラーが出ても処理は続行する
-                }
-            } catch (error) {
-                 showNotification(`要求Javaバージョンの取得中にエラー: ${error.message}`, 'error');
-            }
-
-
-            // mainプロセスにサーバー作成を要求
-            window.electronAPI.proxyToAgent(hostId, {
-                type: 'create-server',
-                payload: {
-                    versionId,
-                    runtime: {
-                        java_version: requiredJavaVersion
-                    }
-                }
-            });
-
-            showNotification(`新規サーバーの作成をホストに要求しました...`, 'info');
+            // 先にモーダルを閉じて、処理開始を通知する
             if(createServerModal) createServerModal.classList.add('hidden');
+            showNotification(`[${versionId}] の作成処理を開始します...`, 'info');
+
+            // Javaバージョン取得を非同期で行い、完了後にサーバー作成を要求する
+            window.electronAPI.getRequiredJavaVersion({ mcVersion: versionId })
+                .then(result => {
+                    let requiredJavaVersion = null;
+                    if (result.success) {
+                        requiredJavaVersion = result.javaVersion;
+                        console.log(`[Renderer] Required Java version for ${versionId} is: ${requiredJavaVersion}`);
+                    } else {
+                        console.warn(`Could not get required Java version for ${versionId}: ${result.error}`);
+                        showNotification(`要求Javaバージョンの取得に失敗したため、Agentのデフォルト設定で続行します。`, 'info');
+                    }
+                    
+                    // mainプロセスにサーバー作成を要求
+                    window.electronAPI.proxyToAgent(hostId, {
+                        type: 'create-server',
+                        payload: {
+                            versionId,
+                            runtime: {
+                                java_version: requiredJavaVersion
+                            }
+                        }
+                    });
+                })
+                .catch(error => {
+                    showNotification(`Javaバージョン取得中にエラーが発生しました。Agentのデフォルト設定で続行します。: ${error.message}`, 'error');
+                    // エラーが発生しても、Javaバージョン指定なしで作成要求を試みる
+                     window.electronAPI.proxyToAgent(hostId, {
+                        type: 'create-server',
+                        payload: {
+                            versionId,
+                            runtime: {
+                                java_version: null
+                            }
+                        }
+                    });
+                });
         });
     }
 
@@ -657,18 +797,70 @@ document.addEventListener('DOMContentLoaded', () => {
     // ナビゲーション
     navGameServers.addEventListener('click', (e) => {
         e.preventDefault();
-        stopGlobalMetricsLoop(); // メトリクスのポーリングを停止
+        stopAllMetricsStreams();
         state.currentView = 'list';
         state.selectedServerId = null;
         updateView();
     });
     navPhysicalServers.addEventListener('click', (e) => {
         e.preventDefault();
-        startGlobalMetricsLoop(); // メトリクスのポーリングを開始
+        stopAllMetricsStreams();
+        // 物理サーバーリストビューでは、ポーリングベースのメトリクスを再度有効化
+        // startGlobalMetricsLoop(); // 今回はストリーム方式に統一するため不要
         state.currentView = 'physical';
         state.selectedPhysicalServerId = null;
         updateView();
     });
+
+    // --- ヘルプポップアップのホバー処理 ---
+    const appElement = document.getElementById('app');
+
+    appElement.addEventListener('mouseover', e => {
+        const target = e.target.closest('[data-action="show-help"]');
+        if (target) {
+            const key = target.dataset.key;
+            // 既存のタイマーをクリア
+            if (helpPopupTimer) clearTimeout(helpPopupTimer);
+            
+            helpPopupTimer = setTimeout(() => {
+                const popup = document.getElementById(`help-popup-${key}`);
+                if (popup) {
+                    // 他のホバー起因のポップアップは閉じる
+                     document.querySelectorAll('[id^="help-popup-"]').forEach(p => {
+                        if (p.id !== popup.id) p.classList.add('hidden');
+                    });
+                    popup.classList.remove('hidden');
+                }
+            }, 500);
+        }
+    });
+
+    appElement.addEventListener('mouseout', e => {
+        const target = e.target.closest('[data-action="show-help"]');
+        if (target) {
+            // 表示タイマーをキャンセル
+            if (helpPopupTimer) {
+                clearTimeout(helpPopupTimer);
+                helpPopupTimer = null;
+            }
+            
+            // 短い遅延の後、ポップアップがホバーされていなければ隠す
+            const key = target.dataset.key;
+            const popup = document.getElementById(`help-popup-${key}`);
+            setTimeout(() => {
+                if (popup && !popup.matches(':hover')) {
+                    popup.classList.add('hidden');
+                }
+            }, 300);
+        }
+    });
+    
+    // ポップアップからマウスが離れた時
+    appElement.addEventListener('mouseleave', (e) => {
+        if (e.target.matches('[id^="help-popup-"]')) {
+            e.target.classList.add('hidden');
+        }
+    }, true);
 
     // --- 初期ロードシーケンス ---
     
@@ -685,9 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // メトリクスデータを受け取ったときに、関連するUI部分のみを更新する
 function updateMetricsUI() {
-    if (state.currentView === 'physical') {
-        renderPhysicalServerList();
-    } else if (state.currentView === 'physical-detail') {
-        renderPhysicalServerDetail();
-    }
+    // この関数はストリーミングモデルでは不要になったため、中身を空にするか、
+    // ポーリング方式のUI更新専用として残す。今回は空にする。
 }

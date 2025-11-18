@@ -94,6 +94,56 @@ window.showNotification = (message, type = 'info', id = null, duration = 5000) =
         removeNotif();
     });
 };
+
+// --- NEW: Confirmation Modal ---
+window.showConfirmationModal = (message, onConfirm) => {
+    // 既存のモーダルがあれば削除
+    const existingModal = document.getElementById('confirmation-modal');
+    if (existingModal) existingModal.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'confirmation-modal';
+    modal.className = 'fixed inset-0 bg-gray-900 bg-opacity-50 dark:bg-opacity-80 flex justify-center items-center z-50 transition-opacity duration-300';
+    
+    // フェードインのために少し遅延させる
+    setTimeout(() => modal.classList.add('opacity-100'), 10);
+
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-md transform transition-all duration-300 scale-95">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white">確認</h3>
+            <p class="text-gray-600 dark:text-gray-300 mt-4">${message}</p>
+            <div class="mt-8 flex justify-end gap-4">
+                <button id="confirm-cancel-btn" class="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500 font-semibold">いいえ</button>
+                <button id="confirm-ok-btn" class="px-6 py-2 bg-primary text-white rounded-md hover:bg-indigo-700 font-semibold">はい</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    
+    const content = modal.querySelector('div > div');
+    setTimeout(() => content.classList.add('scale-100'), 10);
+
+
+    const closeModal = () => {
+        modal.classList.remove('opacity-100');
+        content.classList.remove('scale-100');
+        setTimeout(() => modal.remove(), 300);
+    };
+
+    modal.querySelector('#confirm-ok-btn').addEventListener('click', () => {
+        if(onConfirm) onConfirm();
+        closeModal();
+    });
+    modal.querySelector('#confirm-cancel-btn').addEventListener('click', closeModal);
+    // 背景クリックで閉じる
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'confirmation-modal') {
+            closeModal();
+        }
+    });
+};
+
 // --- DOM要素 (グローバルアクセス用) ---
 // メインの renderer.js の DOMContentLoaded 内で代入されます
 let serverListView, physicalServerListView, serverDetailView, physicalServerDetailView, serverListContainer;
@@ -168,53 +218,180 @@ const renderServerList = () => {
     });
 };
 
-// server.properties 入力フィールド生成
-const createPropertyInput = (key, value) => {
-    const type = typeof value;
-    let inputHtml = '';
-    const baseInputClasses = "w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary";
+// server.properties 入力フィールド生成（メタデータ駆動）
+const createPropertyInput = (prop, currentValue) => {
+    const { key, type, description, 'default': defaultValue, 'enum': enumValues, min, max, step } = prop;
+
+    const container = document.createElement('div');
+    // 新レイアウト: グリッドで要素を配置
+    container.className = 'grid grid-cols-[auto_minmax(0,_1fr)_minmax(0,_1.5fr)_auto] items-center gap-x-4 py-3 border-b border-gray-200 dark:border-gray-700 last:border-b-0';
+
+    // 1. ヘルプアイコンとポップアップ
+    const helpContainer = document.createElement('div');
+    helpContainer.className = 'relative flex items-center justify-center';
+    helpContainer.innerHTML = `
+        <button data-action="show-help" data-key="${key}" class="p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        </button>
+        <div id="help-popup-${key}" class="absolute bottom-full left-0 mb-2 w-72 bg-gray-800 text-white text-sm rounded py-2 px-3 transition-opacity duration-300 pointer-events-none z-20 hidden">
+            <p class="font-semibold">${key}</p>
+            <p class="mt-1 text-xs text-gray-300">${description}</p>
+            <div class="font-mono text-gray-400 text-xs mt-2">Default: ${defaultValue}</div>
+        </div>
+    `;
+    container.appendChild(helpContainer);
+
+
+    // 2. 設定タイトル
+    const label = document.createElement('label');
+    label.htmlFor = key;
+    label.className = 'text-sm font-medium text-gray-800 dark:text-gray-200 truncate';
+    label.textContent = key;
+    container.appendChild(label);
     
-    if (type === 'boolean') {
-        inputHtml = `<label for="${key}" class="form-switch"><input type="checkbox" id="${key}" class="hidden" ${value ? 'checked' : ''}><div class="form-switch-toggle"></div></label>`;
-    } else if (key === 'gamemode') {
-        inputHtml = `<select id="${key}" class="${baseInputClasses}">${['survival', 'creative', 'adventure', 'spectator'].map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
-    } else if (key === 'difficulty') {
-        inputHtml = `<select id="${key}" class="${baseInputClasses}">${['peaceful', 'easy', 'normal', 'hard'].map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
-    } else if (type === 'number') {
-        inputHtml = `<input type="number" id="${key}" value="${value}" class="${baseInputClasses}">`;
-    } else {
-        const inputType = key.includes('password') ? 'password' : 'text';
-        inputHtml = `<input type="${inputType}" id="${key}" value="${value}" class="${baseInputClasses}">`;
+    // 3. 入力要素
+    const inputContainer = document.createElement('div');
+    let inputElement;
+    const baseInputClasses = "w-full bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary";
+
+    switch (type) {
+        case 'boolean':
+            // On/Offのラジオボタンに変更
+            inputElement = document.createElement('div');
+            inputElement.className = 'flex items-center gap-x-4';
+            const idOn = `${key}-on`;
+            const idOff = `${key}-off`;
+            const checkedOn = currentValue === true ? 'checked' : '';
+            const checkedOff = currentValue === false ? 'checked' : '';
+            inputElement.innerHTML = `
+                <div class="flex items-center">
+                    <input id="${idOn}" name="${key}" type="radio" data-key="${key}" value="true" ${checkedOn} class="h-4 w-4 border-gray-300 text-primary focus:ring-primary property-input-radio">
+                    <label for="${idOn}" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">On</label>
+                </div>
+                <div class="flex items-center">
+                    <input id="${idOff}" name="${key}" type="radio" data-key="${key}" value="false" ${checkedOff} class="h-4 w-4 border-gray-300 text-primary focus:ring-primary property-input-radio">
+                    <label for="${idOff}" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">Off</label>
+                </div>
+            `;
+            break;
+        case 'enum':
+            inputElement = document.createElement('select');
+            inputElement.id = key;
+            inputElement.dataset.key = key;
+            inputElement.className = `${baseInputClasses} property-input`;
+            (enumValues || []).forEach(o => {
+                const option = document.createElement('option');
+                option.value = o;
+                option.textContent = o;
+                if (currentValue === o) {
+                    option.selected = true;
+                }
+                inputElement.appendChild(option);
+            });
+            break;
+        case 'number':
+            inputElement = document.createElement('input');
+            inputElement.type = 'number';
+            inputElement.id = key;
+            inputElement.dataset.key = key;
+            inputElement.value = currentValue;
+            inputElement.className = `${baseInputClasses} property-input`;
+            if (min !== undefined) inputElement.min = min;
+            if (max !== undefined) inputElement.max = max;
+            if (step !== undefined) inputElement.step = step;
+            break;
+        case 'string':
+        default:
+            inputElement = document.createElement('input');
+            inputElement.type = key.includes('password') ? 'password' : 'text';
+            inputElement.id = key;
+            inputElement.dataset.key = key;
+            inputElement.value = currentValue;
+            inputElement.className = `${baseInputClasses} property-input`;
+            break;
     }
+    inputContainer.appendChild(inputElement);
+    container.appendChild(inputContainer);
+
+    // 4. リセットボタン
+    const resetContainer = document.createElement('div');
+    resetContainer.className = 'flex items-center justify-end';
+    const resetButton = document.createElement('button');
+    resetButton.dataset.action = 'confirm-reset-property';
+    resetButton.dataset.key = key;
+    resetButton.className = 'p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400';
+    resetButton.title = 'デフォルト値に戻す';
+    resetButton.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3"></path></svg>`;
+    resetContainer.appendChild(resetButton);
+    container.appendChild(resetContainer);
     
-    return `<div class="grid grid-cols-3 gap-4 items-center">
-                <label for="${key}" class="text-sm text-gray-500 dark:text-gray-400 truncate col-span-1">${key}</label>
-                <div class="col-span-2">${inputHtml}</div>
-            </div>`;
+    return container;
 };
 
+
 // server.properties エディタレンダリング
-const renderPropertiesEditor = (server) => {
+const renderPropertiesEditor = async (server) => {
     const properties = server.properties || {};
-    const propertyGroups = {
-        'ワールド設定': ['level-name', 'level-seed', 'level-type', 'generator-settings', 'generate-structures', 'allow-nether', 'hardcore', 'difficulty', 'gamemode', 'force-gamemode'],
-        'プレイヤー設定': ['max-players', 'pvp', 'allow-flight', 'enforce-whitelist', 'white-list', 'player-idle-timeout', 'spawn-protection', 'op-permission-level', 'function-permission-level'],
-        'MOB・NPC設定': ['spawn-animals', 'spawn-monsters', 'spawn-npcs'],
-        'サーバー技術設定': ['server-port', 'server-ip', 'online-mode', 'prevent-proxy-connections', 'network-compression-threshold', 'max-tick-time', 'view-distance', 'max-build-height', 'max-world-size', 'use-native-transport', 'snooper-enabled'],
-        'その他': ['motd', 'resource-pack', 'resource-pack-sha1', 'enable-command-block'],
-        'Query & RCON': ['enable-query', 'query.port', 'enable-rcon', 'rcon.port', 'rcon.password', 'broadcast-console-to-ops', 'broadcast-rcon-to-ops']
-    };
-    let html = '<div id="properties-editor" class="space-y-6 custom-scrollbar pr-2">';
-    for (const groupName in propertyGroups) {
-        html += `<fieldset class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                    <legend class="text-lg font-semibold text-gray-900 dark:text-white px-2">${groupName}</legend>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        ${propertyGroups[groupName].map(key => createPropertyInput(key, properties[key])).join('')}
-                    </div>
-                </fieldset>`;
+    const annotations = await window.electronAPI.getServerPropertiesAnnotations();
+
+    // アノテーションをグループごとに動的に分類
+    const groupedAnnotations = Object.values(annotations).reduce((acc, annotation) => {
+        const groupName = annotation.group || 'その他';
+        if (!acc[groupName]) {
+            acc[groupName] = [];
+        }
+        acc[groupName].push(annotation);
+        return acc;
+    }, {});
+
+    const editorContainer = document.createElement('div');
+    editorContainer.id = 'properties-editor';
+    editorContainer.className = 'space-y-4 custom-scrollbar pr-2';
+
+    // 定義済みの順序、なければアルファベット順
+    const groupOrder = ['ワールド設定', 'プレイヤー設定', 'MOB・NPC設定', 'サーバー技術設定', 'Query & RCON', 'その他'];
+    const sortedGroupNames = Object.keys(groupedAnnotations).sort((a, b) => {
+        const indexA = groupOrder.indexOf(a);
+        const indexB = groupOrder.indexOf(b);
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return a.localeCompare(b);
+    });
+
+    for (const groupName of sortedGroupNames) {
+        const groupAnnotations = groupedAnnotations[groupName];
+        
+        const details = document.createElement('details');
+        details.className = 'group bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 open:ring-2 open:ring-primary/50 dark:open:ring-primary/70 transition-all';
+        details.open = true;
+
+        const summary = document.createElement('summary');
+        summary.className = 'text-lg font-bold text-gray-800 dark:text-white p-4 cursor-pointer flex items-center justify-between list-none';
+        summary.innerHTML = `
+            <span>${groupName}</span>
+            <svg class="w-6 h-6 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        `;
+        details.appendChild(summary);
+
+        const itemsContainer = document.createElement('div');
+        // レスポンシブグリッドレイアウト
+        itemsContainer.className = 'px-4 pb-4 grid grid-cols-1 xl:grid-cols-2 gap-x-6';
+        
+        groupAnnotations.forEach(annotation => {
+            const { key } = annotation;
+            // サーバーに値がなければ、アノテーションのデフォルト値を使用
+            const currentValue = properties[key] !== undefined ? properties[key] : annotation.default;
+            const inputElement = createPropertyInput(annotation, currentValue);
+            itemsContainer.appendChild(inputElement);
+        });
+
+        if (itemsContainer.hasChildNodes()) {
+            details.appendChild(itemsContainer);
+            editorContainer.appendChild(details);
+        }
     }
-    html += '</div>';
-    return html;
+    return editorContainer;
 };
 
 // --- v6: 詳細ビューのレンダリング (レイアウト大幅改修) ---
@@ -269,7 +446,7 @@ const renderServerDetail = () => {
             </div>
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">プレイヤー</div>
-                <div class="text-4xl font-extrabold text-primary mt-1">${server.players ? server.players.current : 0} <span class="text-lg text-gray-500">/ ${server.players ? server.players.max : 20}</span></div>
+                <div class="text-4xl font-extrabold text-primary mt-1">${server.players?.current || 0} <span class="text-lg text-gray-500">/ ${server.players?.max || 20}</span></div>
             </div>
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">TPS</div>
@@ -283,7 +460,7 @@ const renderServerDetail = () => {
         </div>
 
         <div class="flex flex-col lg:flex-row gap-6 mt-6">
-            <div class="lg:w-64 lg:flex-shrink-0 space-y-6">
+            <div class="lg:w-75 lg:flex-shrink-0 space-y-6">
                 <nav class="flex lg:flex-col space-x-2 lg:space-x-0 lg:space-y-2" aria-label="Tabs">
                     <button data-tab="console" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'console' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>コンソールログ</button>
                     <button data-tab="launch-config" class="detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg ${state.detailActiveTab === 'launch-config' ? 'bg-primary text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}" ${isBeingDeleted ? 'disabled' : ''}>起動構成</button>
@@ -374,18 +551,25 @@ const updateDetailViewContent = (server) => {
             break;
 
         case 'properties':
-            mainArea.innerHTML = `
-                <div class="p-6 h-full flex flex-col">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold">サーバー設定 (server.properties)</h2>
-                        <button data-action="save-properties" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">変更を保存</button>
-                    </div>
-                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                        ${renderPropertiesEditor(server)}
-                    </div>
-                </div>
-            `;
-            break;
+                    mainArea.innerHTML = `
+                        <div class="p-6 h-full flex flex-col">
+                            <div class="flex justify-between items-center mb-4">
+                                <h2 class="text-xl font-bold">サーバー設定 (server.properties)</h2>
+                                <button data-action="save-properties" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">変更を保存</button>
+                            </div>
+                            <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                                <div class="text-center p-8 text-gray-500">読み込み中...</div>
+                            </div>
+                        </div>
+                    `;
+                    renderPropertiesEditor(server).then(editorElement => {
+                        const editorContainer = mainArea.querySelector('.custom-scrollbar');
+                        if (editorContainer) {
+                            editorContainer.innerHTML = ''; // 読み込み中... をクリア
+                            editorContainer.appendChild(editorElement);
+                        }
+                    });
+                    break;
 
         case 'mods':
         case 'plugins':
@@ -449,8 +633,8 @@ const renderPhysicalServerList = () => {
 
         const statusClasses = getAgentStatusClasses(pserv.status);
         const metrics = pserv.metrics || {};
-        const cpu = metrics.cpuUsage || 0;
-        const ram = metrics.ramUsage || 0;
+        const cpu = metrics.cpuUsage || '0.00';
+        const ram = metrics.ramUsage || '0.00';
 
         el.innerHTML = `
             <div class="md:col-span-2">
@@ -535,15 +719,15 @@ const updatePhysicalServerDetailContent = () => {
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU 使用率</div>
-                        <div class="text-4xl font-extrabold ${getCpuColor(metrics.cpuUsage || 0)} mt-1">${metrics.cpuUsage || 'N/A'}<span class="text-lg">%</span></div>
+                        <div class="text-4xl font-extrabold ${getCpuColor(parseFloat(metrics.cpuUsage) || 0)} mt-1">${metrics.cpuUsage || 'N/A'}<span class="text-lg">%</span></div>
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div class="text-sm font-medium text-gray-500 dark:text-gray-400">RAM 使用率</div>
-                        <div class="text-4xl font-extrabold ${getMemoryColor((metrics.ramUsage || 0), 100)} mt-1">${metrics.ramUsage || 'N/A'}<span class="text-lg">%</span></div>
+                        <div class="text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.ramUsage) || 0, 100)} mt-1">${metrics.ramUsage || 'N/A'}<span class="text-lg">%</span></div>
                     </div>
                      <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Disk 使用率</div>
-                        <div class="text-4xl font-extrabold ${getMemoryColor((metrics.diskUsage || 0), 100)} mt-1">${metrics.diskUsage || 'N/A'}<span class="text-lg">%</span></div>
+                        <div class="text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.diskUsage) || 0, 100)} mt-1">${metrics.diskUsage || 'N/A'}<span class="text-lg">%</span></div>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">

@@ -5,13 +5,13 @@
   "main": "main.js",
   "scripts": {
     "start": "npm run build && electron .",
-    "dev": "electron . --no-sandbox --disable-gpu --disable-dev-shm-usage",
+    "dev": "electron . --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-software-rasterizer",
     "build": "electron-builder --linux"
   },
   "devDependencies": {
     "electron": "^39.1.2",
     "electron-builder": "^26.1.0",
-    "uuid": "^9.0.1",
+    "uuid": "^13.0.0",
     "ws": "^8.17.0"
   },
   "build": {
@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "axios": "^1.13.2",
-    "electron-store": "^8.1.0"
+    "electron-store": "^8.1.0",
+    "zod": "^3.22.4"
   }
 }

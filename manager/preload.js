@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMinecraftVersions: () => ipcRenderer.send('get-minecraft-versions'),
   getJavaDownloadInfo: (options) => ipcRenderer.invoke('getJavaDownloadInfo', options),
   getRequiredJavaVersion: (options) => ipcRenderer.invoke('get-required-java-version', options),
+  getServerPropertiesAnnotations: () => ipcRenderer.invoke('get-server-properties-annotations'),
   
   // 汎用プロキシ経由でAgentにメッセージを送信
   proxyToAgent: (agentId, message) => ipcRenderer.send('proxy-to-agent', { agentId, message }),
@@ -22,6 +23,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onServerListUpdate: (callback) => ipcRenderer.on('server-list-update', (event, ...args) => callback(...args)),
   onServerUpdate: (callback) => ipcRenderer.on('server-update', (event, ...args) => callback(...args)),
   onMetricsData: (callback) => ipcRenderer.on('metrics-data', (event, ...args) => callback(...args)), // メトリクス専用
+  onGameServerMetricsUpdate: (callback) => ipcRenderer.on('game-server-metrics-update', (event, ...args) => callback(...args)),
+  onPhysicalServerMetricsUpdate: (callback) => ipcRenderer.on('physical-server-metrics-update', (event, ...args) => callback(...args)),
   
   // 操作の進捗と結果
   onProgressUpdate: (callback) => ipcRenderer.on('progress-update', (event, ...args) => callback(...args)),

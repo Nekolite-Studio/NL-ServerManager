@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>統合サーバー管理ダッシュボード v6</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { 'primary': '#4f46e5', 'secondary': '#10b981', 'danger': '#ef4444', 'warning': '#f59e0b' }
+                }
+            }
+        }
+    </script>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,7 +60,7 @@
             -webkit-line-clamp: 3;
             overflow: hidden;
             /* text-xs (12px) * line-height (1.5) = 18px. 3.5行 = 63px */
-            max-height: 3.9375rem; 
+            max-height: 3.9375rem;
         }
 
         /* --- v6で追加 --- */
@@ -58,17 +68,16 @@
         .rotate-180 {
             transform: rotate(180deg);
         }
-    </style>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: { 'primary': '#4f46e5', 'secondary': '#10b981', 'danger': '#ef4444', 'warning': '#f59e0b' }
-                }
-            }
+        /* ヘルプポップアップ */
+        .group:hover .group-hover\:block {
+            display: block;
         }
-    </script>
+
+        /* details[open] summary アイコン回転 */
+        details[open] > summary .group-open\:rotate-180 {
+            transform: rotate(180deg);
+        }
+    </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 antialiased">
 

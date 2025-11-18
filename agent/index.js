@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const os = require('os');
 const path = require('path');
 const fs = require('fs'); // fsモジュールを追加
+const si = require('systeminformation');
 const { initializeSettings, getSettings } = require('./src/settingsManager');
 const {
     loadAllServers,
@@ -11,13 +12,16 @@ const {
     deleteServer,
     startServer,
     stopServer,
+    startMetricsStream,
+    stopMetricsStream,
     acceptEula,
     getJavaInstallDir,
     extractArchive,
     getJavaExecutablePath,
-    downloadFile
+    downloadFile,
+    updateServerProperties
 } = require('./src/serverManager');
-const { Message } = require('../common/protocol'); // protocol.jsをインポート
+const { Message } = require('../common/protocol');
 
 // --- 初期化処理 ---
 
@@ -40,28 +44,47 @@ function getSystemInfo() {
   };
 }
 
-function getMetrics() {
-  const servers = getAllServers();
-  const runningServers = servers.filter(s => s.status === 'running').length;
-  const stoppedServers = servers.length - runningServers;
+async function getMetrics() {
+    const servers = getAllServers();
+    const runningServers = servers.filter(s => s.status === 'running');
+    const stoppedServersCount = servers.length - runningServers.length;
+    const totalPlayers = runningServers.reduce((acc, s) => acc + (s.players?.current || 0), 0);
 
-  return {
-    // CPU/RAM使用率はダミーのままですが、サーバー数は実際のデータに基づきます
-    cpuUsage: (Math.random() * 100).toFixed(2),
-    ramUsage: (Math.random() * 100).toFixed(2),
-    diskUsage: (Math.random() * 100).toFixed(2),
-    networkSpeed: (Math.random() * 1000).toFixed(2),
-    gameServers: {
-      running: runningServers,
-      stopped: stoppedServers,
-      totalPlayers: Math.floor(Math.random() * 50), // プレイヤー数はまだダミー
-    },
-  };
+    // systeminformationを使用して実際の値を取得
+    const [cpuData, memData, fsData] = await Promise.all([
+        si.currentLoad(),
+        si.mem(),
+        si.fsSize()
+    ]);
+
+    // CPU使用率
+    const cpuUsage = cpuData.currentLoad.toFixed(2);
+
+    // RAM使用率
+    const ramUsage = ((memData.active / memData.total) * 100).toFixed(2);
+
+    // Disk使用率
+    const serverDirectory = getSettings().servers_directory;
+    const mainDisk = fsData.find(fs => serverDirectory.startsWith(fs.mount));
+    const diskUsage = mainDisk ? ((mainDisk.used / mainDisk.size) * 100).toFixed(2) : '0.00';
+
+    return {
+        cpuUsage: cpuUsage,
+        ramUsage: ramUsage,
+        diskUsage: diskUsage,
+        networkSpeed: 'N/A', // networkSpeedは一旦N/Aに
+        gameServers: {
+            running: runningServers.length,
+            stopped: stoppedServersCount,
+            totalPlayers: totalPlayers,
+        },
+    };
 }
 
 // --- WebSocketサーバー ---
 
 const wss = new WebSocket.Server({ port: PORT });
+const physicalServerMetricsIntervals = new Map(); // 物理サーバーのメトリクス収集を管理
 
 // 接続しているすべてのManagerにブロードキャストするヘルパー関数
 function broadcast(message) {
@@ -125,6 +148,48 @@ wss.on('connection', (ws) => {
     const { type, payload, requestId } = parsedMessage;
  
      switch (type) {
+        case Message.START_METRICS_STREAM:
+            {
+                const { streamId, targetType, targetId } = payload;
+                if (targetType === 'gameServer') {
+                    startMetricsStream(ws, targetId);
+                } else if (targetType === 'physicalServer') {
+                    if (physicalServerMetricsIntervals.has(streamId)) {
+                        console.log(`[Agent] Physical server metrics stream ${streamId} is already running.`);
+                        return;
+                    }
+                    console.log(`[Agent] Starting physical server metrics stream ${streamId}.`);
+                    const intervalId = setInterval(async () => {
+                        try {
+                            const metrics = await getMetrics();
+                            if (ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({ type: Message.PHYSICAL_SERVER_METRICS_UPDATE, payload: metrics }));
+                            } else {
+                                clearInterval(intervalId);
+                                physicalServerMetricsIntervals.delete(streamId);
+                            }
+                        } catch (error) {
+                            console.error(`[Agent] Error getting physical server metrics:`, error);
+                        }
+                    }, 1000);
+                    physicalServerMetricsIntervals.set(streamId, intervalId);
+                }
+            }
+            break;
+        case Message.STOP_METRICS_STREAM:
+            {
+                const { streamId, targetType, targetId } = payload;
+                if (targetType === 'gameServer') {
+                    stopMetricsStream(targetId);
+                } else if (targetType === 'physicalServer') {
+                    if (physicalServerMetricsIntervals.has(streamId)) {
+                        console.log(`[Agent] Stopping physical server metrics stream ${streamId}.`);
+                        clearInterval(physicalServerMetricsIntervals.get(streamId));
+                        physicalServerMetricsIntervals.delete(streamId);
+                    }
+                }
+            }
+            break;
        // --- System & Server Info ---
        case Message.GET_SYSTEM_INFO:
          ws.send(JSON.stringify({
@@ -137,7 +202,10 @@ wss.on('connection', (ws) => {
          }));
          break;
        case Message.GET_METRICS:
-         ws.send(JSON.stringify({ type: Message.METRICS_DATA, payload: getMetrics() }));
+         {
+            const metrics = await getMetrics();
+            ws.send(JSON.stringify({ type: Message.METRICS_DATA, payload: metrics }));
+         }
          break;
       case Message.GET_ALL_SERVERS:
         ws.send(JSON.stringify({ type: Message.SERVER_LIST_UPDATE, payload: getAllServers() }));
@@ -187,6 +255,19 @@ wss.on('connection', (ws) => {
             }
         }
         break;
+      case Message.UPDATE_SERVER_PROPERTIES:
+        {
+            const { serverId, properties } = payload;
+            const serversDirectory = getSettings().servers_directory;
+            const result = await updateServerProperties(serversDirectory, serverId, properties);
+            if (result.success) {
+                sendResponse(ws, requestId, type, true, { serverId, properties: result.properties });
+                // server.propertiesの変更はリスト表示には影響しないため、ブロードキャストは不要
+            } else {
+                sendResponse(ws, requestId, type, false, { serverId }, result.error);
+            }
+        }
+        break;
       case Message.DELETE_SERVER:
         {
             const { serverId } = payload;
@@ -222,10 +303,9 @@ wss.on('connection', (ws) => {
                     throw new Error(`Unknown server control action: ${action}`);
                 }
             } catch (error) {
-                console.error(`[Agent] Failed to execute action '${action}' for server ${serverId}:`, error);
-
                 if (action === 'start' && error.code === 'EULA_NOT_ACCEPTED') {
-                    // EULA未同意の場合、特別なメッセージをManagerに送信
+                    // EULA未同意の場合はエラーではなく、通常のフローとして扱う
+                    console.log(`[Agent] EULA not accepted for server ${serverId}. Requesting agreement from manager.`);
                     ws.send(JSON.stringify({
                         type: Message.REQUIRE_EULA_AGREEMENT,
                         requestId: requestId,
@@ -236,7 +316,8 @@ wss.on('connection', (ws) => {
                     }));
                     // この時点では失敗応答はせず、ユーザーの操作を待つ
                 } else {
-                    // その他の起動失敗
+                    // その他の予期せぬエラー
+                    console.error(`[Agent] Failed to execute action '${action}' for server ${serverId}:`, error);
                     if (action === 'start') {
                        ws.send(JSON.stringify({
                            type: Message.SERVER_UPDATE,
@@ -324,6 +405,14 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('Manager disconnected.');
+    // 接続が切れたら、このクライアントに関連するすべてのストリームを停止
+    physicalServerMetricsIntervals.forEach((intervalId, streamId) => {
+        console.log(`[Agent] Stopping physical server metrics stream ${streamId} due to disconnect.`);
+        clearInterval(intervalId);
+        physicalServerMetricsIntervals.delete(streamId);
+    });
+    // ゲームサーバーのストリームも同様に停止する必要があるが、wsオブジェクトをキーにしないと難しい
+    // serverManager側でwsの状態をチェックしているので、一旦はそちらに任せる
   });
 
   ws.on('error', (error) => {

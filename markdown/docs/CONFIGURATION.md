@@ -95,7 +95,11 @@
     },
     "status": "stopped",
     "logs": [],
-    "auto_start": false
+    "auto_start": false,
+    "properties": {
+        "gamemode": "survival",
+        "pve": true
+    }
 }
 ```
 
@@ -110,6 +114,7 @@
     -   **`server_jar` (string):** 起動するサーバーJARファイルの名前。
 -   **`status` (string):** サーバーの現在の状態。`running` または `stopped`。**注意:** この値はディスクに保存されますが、Agent起動時には実際のプロセス存在状況に基づいてメモリ上で上書きされます。そのため、ディスク上のこの値は信頼されません。
 -   **`auto_start` (boolean):** `agent`起動時にこのサーバーを自動で起動するかどうか。（将来的な機能）
+-   **`properties` (Object):** `server.properties`のミラー。`agent`はこのオブジェクトを信頼できる情報源として`server.properties`ファイルに書き込みます。
 
 > **NOTE:**
 > このファイルとは別に、Minecraftサーバー固有の設定ファイルである `server.properties` も同じディレクトリに格納されます。`manager`は `UPDATE_SERVER_PROPERTIES` メッセージを通じてこのファイルを編集できます。
