@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "manager",
-    "agent"
+    "agent",
+    "common"
   ],
   "scripts": {
     "dev": "concurrently \"npm:dev:manager\" \"npm:dev:agent\"",

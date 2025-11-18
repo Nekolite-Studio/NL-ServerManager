@@ -1,0 +1,10 @@
+{
+  "name": "@nl-server-manager/common",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "protocol.js",
+  "dependencies": {
+    "zod": "^4.1.12"
+  }
+}

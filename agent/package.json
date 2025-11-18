@@ -9,6 +9,7 @@
     "dev": "node index.js"
   },
   "dependencies": {
+    "@nl-server-manager/common": "1.0.0",
     "adm-zip": "^0.5.10",
     "rcon-client": "^4.2.3",
     "systeminformation": "^5.27.11",

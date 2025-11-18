@@ -1,4 +1,4 @@
-import WebSocket from 'ws';
+import { WebSocketServer } from 'ws';
 import os from 'os';
 import path from 'path';
 import fs from 'fs'; // fsモジュールを追加
@@ -85,13 +85,13 @@ async function getMetrics() {
 
 // --- WebSocketサーバー ---
 
-const wss = new WebSocket.Server({ port: PORT });
+const wss = new WebSocketServer({ port: PORT });
 const physicalServerMetricsIntervals = new Map(); // 物理サーバーのメトリクス収集を管理
 
 // 接続しているすべてのManagerにブロードキャストするヘルパー関数
 function broadcast(message) {
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
+        if (client.readyState === 1) { // WebSocket.OPEN は 1
             client.send(JSON.stringify(message));
         }
     });

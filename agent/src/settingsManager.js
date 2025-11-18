@@ -87,7 +87,7 @@ function saveSettings(settings) {
   return success;
 }
 
-export default {
+export {
   initializeSettings,
   getSettings,
   saveSettings,

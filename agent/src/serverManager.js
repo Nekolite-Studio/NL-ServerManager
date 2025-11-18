@@ -4,12 +4,12 @@ import https from 'https';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { Rcon } from 'rcon-client';
-import tar from 'tar';
+import * as tar from 'tar';
 import unzipper from 'unzipper';
 import si from 'systeminformation';
 import { loadJsonSync, saveJsonSync, resolvePath, readJson, writeJson } from './utils/storage.js';
-import { Message, ServerStatus } from '../../common/protocol.js';
-import { ServerPropertiesSchema } from '../../common/property-schema.js';
+import { Message, ServerStatus } from '@nl-server-manager/common/protocol.js';
+import { ServerPropertiesSchema } from '@nl-server-manager/common/property-schema.js';
 
 const SERVER_CONFIG_FILENAME = 'nl-server_manager.json';
 const SCHEMA_VERSION = '1.0.0';
@@ -741,12 +741,6 @@ stopMetricsStream(serverId);
 }
 
 /**
- * eula.txtを更新してEULAに同意する
- * @param {string} serversDirectory
- * @param {string} serverId
- * @returns {Promise<{success: boolean, error?: string}>}
- */
-/**
  * RCONクライアントをサーバーに接続する
  * @param {string} serverId
  * @param {object} serverConfig
@@ -905,6 +899,12 @@ function stopMetricsStream(serverId) {
     }
 }
 
+/**
+ * eula.txtを更新してEULAに同意する
+ * @param {string} serversDirectory
+ * @param {string} serverId
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
 async function acceptEula(serversDirectory, serverId) {
     const serverDir = path.join(resolvePath(serversDirectory), serverId);
     const eulaPath = path.join(serverDir, 'eula.txt');

@@ -2,15 +2,30 @@
   "name": "manager",
   "version": "0.1.0",
   "description": "GUI Management Console for Minecraft Servers",
+  "type": "module",
   "main": "main.js",
   "scripts": {
     "start": "npm run build && electron .",
-    "dev": "electron . --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-software-rasterizer",
-    "build": "electron-builder --linux"
+    "dev": "concurrently \"npm:watch:preload\" \"electron . --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-software-rasterizer\"",
+    "build:preload": "esbuild preload.js --bundle --platform=node --external:electron --outfile=dist/preload.js",
+    "watch:preload": "npm-watch build:preload",
+    "build": "npm run build:preload && electron-builder --linux"
+  },
+  "watch": {
+    "build:preload": {
+      "patterns": [
+        "preload.js"
+      ],
+      "extensions": "js",
+      "quiet": false
+    }
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "electron": "^39.1.2",
     "electron-builder": "^26.1.0",
+    "esbuild": "^0.23.0",
+    "npm-watch": "^0.13.0",
     "uuid": "^13.0.0",
     "ws": "^8.17.0"
   },
@@ -20,7 +35,7 @@
     "files": [
       "main.js",
       "index.html",
-      "preload.js"
+      "dist/preload.js"
     ],
     "linux": {
       "target": [
@@ -36,8 +51,9 @@
     }
   },
   "dependencies": {
+    "@nl-server-manager/common": "1.0.0",
     "axios": "^1.13.2",
     "electron-store": "^8.1.0",
-    "zod": "^3.22.4"
+    "zod": "^4.1.12"
   }
 }

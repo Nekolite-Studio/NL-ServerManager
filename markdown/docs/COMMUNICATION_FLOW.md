@@ -11,7 +11,7 @@
 
 ## 2. メッセージの基本構造と非同期処理
 
-`Manager`と`Agent`間のWebSocketメッセージは、すべて`common/protocol.js`で定義された規約に従います。
+`Manager`と`Agent`間のWebSocketメッセージは、すべて`@nl-server-manager/common`パッケージの`protocol.js`で定義された規約に従います。
 
 -   **要求ID (`requestId`):** `Manager`から`Agent`へのすべての要求には、一意の`requestId`が付与されます。
 -   **応答 (`OPERATION_RESULT`):** `Agent`は、処理が完了した際に必ず同じ`requestId`を含む`OPERATION_RESULT`メッセージを返します。これにより、`Manager`はどの要求に対する応答かを正確に対応付けることができます。
@@ -43,7 +43,7 @@ sequenceDiagram
     Renderer->>Renderer: UI更新 (通知表示など)
 ```
 
-1.  **UI → Main (IPC):** レンダラープロセスは、[`preload.js`](manager/preload.js:10)を介して`proxy-to-agent`チャネルにIPCメッセージを送信します。
+1.  **UI → Main (IPC):** レンダラープロセスは、[`preload.js`](../../manager/preload.js)を介して`proxy-to-agent`チャネルにIPCメッセージを送信します。
 2.  **Main → Agent (WebSocket):** メインプロセスは、メッセージに`requestId`を付与し、対象の`Agent`にWebSocketで送信します。この`requestId`は完了応答を待つために`pendingOperations`マップに保存されます。
 3.  **Agent → Main (WebSocket):** `Agent`は処理完了後、`requestId`を含む`OPERATION_RESULT`メッセージを返します。
 4.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルでUIに通知します。

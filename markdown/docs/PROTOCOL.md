@@ -1,6 +1,6 @@
 # 通信プロトコル仕様
 
-このドキュメントは、`manager`と`agent`間でやり取りされるWebSocketメッセージの仕様を定義します。プロトコルの定義は[`common/protocol.js`](../../../common/protocol.js)に集約されています。
+このドキュメントは、`manager`と`agent`間でやり取りされるWebSocketメッセージの仕様を定義します。プロトコルの定義は`@nl-server-manager/common`パッケージの[`protocol.js`](../../common/protocol.js)に集約されています。
 
 ## 1. 基本的なメッセージ構造
 
@@ -33,7 +33,7 @@
 
 ## 2.5. サーバー状態 (ServerStatus)
 
-サーバーのライフサイクル状態は、以下の文字列で表現されます。この定義は `common/protocol.js` の `ServerStatus` オブジェクトに集約されています。
+サーバーのライフサイクル状態は、以下の文字列で表現されます。この定義は `@nl-server-manager/common` パッケージの `protocol.js` の `ServerStatus` オブジェクトに集約されています。
 
 | ステータス   | 説明                                               |
 | :----------- | :------------------------------------------------- |

@@ -1,6 +1,6 @@
-const { dialog } = require('electron');
-const Store = require('electron-store');
-const fs = require('fs');
+import { dialog, app } from 'electron';
+import Store from 'electron-store';
+import fs from 'fs';
 
 // スキーマを定義して、データの型とデフォルト値を保証する
 const schema = {
@@ -58,9 +58,7 @@ try {
             `設定ファイルの読み込みに失敗し、バックアップも作成できませんでした。\nエラー: ${backupError.message}\nアプリケーションを再インストールする必要があるかもしれません。`
         );
         // アプリケーションを終了させる
-        const { app } = require('electron');
         app.quit();
-        return;
     }
 
     // ユーザーに状況を通知し、対応を選択させる
@@ -81,7 +79,6 @@ try {
         console.log('Store has been cleared and re-initialized based on user choice.');
     } else {
         // ユーザーが終了を選択した場合
-        const { app } = require('electron');
         app.quit();
     }
 }
@@ -118,7 +115,7 @@ function getWindowBounds() {
     return store.get('windowBounds');
 }
 
-module.exports = {
+export {
     getAgents,
     setAgents,
     getWindowBounds,

@@ -1,11 +1,16 @@
-const { app, BrowserWindow, ipcMain, net } = require('electron');
-const path = require('path');
-const WebSocket = require('ws');
-const axios = require('axios'); // axiosをインポート
-const { v4: uuidv4 } = require('uuid');
-const { getAgents, setAgents, getWindowBounds, setWindowBounds } = require('./src/storeManager');
-const { Message } = require('../common/protocol');
-const { ServerPropertiesAnnotations } = require('../common/property-schema');
+import { app, BrowserWindow, ipcMain, net } from 'electron';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import WebSocket from 'ws';
+import axios from 'axios'; // axiosをインポート
+import { v4 as uuidv4 } from 'uuid';
+import { getAgents, setAgents, getWindowBounds, setWindowBounds } from './src/storeManager.js';
+import { Message } from '@nl-server-manager/common/protocol.js';
+import { ServerPropertiesAnnotations } from '@nl-server-manager/common/property-schema.js';
+
+// --- ESM Polyfills for __dirname ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --- Agent Management ---
 
@@ -222,7 +227,7 @@ function createWindow () {
     width,
     height,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'dist/preload.js')
     }
   });
 

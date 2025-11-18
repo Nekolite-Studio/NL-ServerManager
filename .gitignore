@@ -141,5 +141,8 @@ vite.config.ts.timestamp-*
 .vite/
 
 
-## Custom
+# Custom
 /sample/.*
+package-lock.json
+## Build output
+/manager/dist

@@ -1,4 +1,4 @@
-const { z } = require('zod');
+import { z } from 'zod';
 
 const PORT_MAX = 2 ** 16 - 2;
 
@@ -31,7 +31,7 @@ const numberSetter = (def, min, max, step) => {
  * 標準のサーバープロパティ定義
  * zodスキーマとして定義し、型とデフォルト値を指定する
  */
-const DefaultServerProperties = z
+export const DefaultServerProperties = z
   .object({
     'accepts-transfers': boolSetter(false),
     'allow-flight': boolSetter(false),
@@ -109,7 +109,7 @@ const DefaultServerProperties = z
  * サーバープロパティのパース用スキーマ
  * デフォルト値で空のオブジェクトを許容する
  */
-const ServerPropertiesSchema = DefaultServerProperties.default({});
+export const ServerPropertiesSchema = DefaultServerProperties.default({});
 
 /**
  * ZodスキーマからUIで利用するためのアノテーション（メタデータ）を抽出する
@@ -251,10 +251,4 @@ function extractPropertyAnnotations(propSchema) {
     return annotations;
 }
 
-const ServerPropertiesAnnotations = extractPropertyAnnotations(DefaultServerProperties);
-
-
-module.exports = {
-    ServerPropertiesSchema,
-    ServerPropertiesAnnotations,
-};
+export const ServerPropertiesAnnotations = extractPropertyAnnotations(DefaultServerProperties);

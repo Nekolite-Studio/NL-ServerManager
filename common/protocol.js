@@ -3,7 +3,7 @@
  * It serves as the single source of truth for all message types.
  */
 
-const Message = Object.freeze({
+export const Message = Object.freeze({
     // Manager -> Agent
     GET_SYSTEM_INFO: 'get-system-info',
     GET_ALL_SERVERS: 'get-all-servers',
@@ -35,14 +35,9 @@ const Message = Object.freeze({
     PROXY_TO_AGENT: 'proxy-to-agent',
 });
 
-const ServerStatus = Object.freeze({
+export const ServerStatus = Object.freeze({
     STOPPED: 'stopped',
     STARTING: 'starting',
     RUNNING: 'running',
     STOPPING: 'stopping',
 });
-
-module.exports = {
-    Message,
-    ServerStatus,
-};
