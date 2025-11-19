@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Server Modal Mockup (Strict)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { 'primary': '#4f46e5', 'secondary': '#10b981', 'danger': '#ef4444', 'warning': '#f59e0b' }
+                }
+            }
+        }
+    </script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+
+        /* Custom Scrollbar matching index.html */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4b5563;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 antialiased flex items-center justify-center min-h-screen">
+
+    <!-- Replicating the exact modal structure from index.html -->
+    <div id="create-server-modal"
+        class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">新規サーバー作成</h3>
+            <div class="space-y-4">
+
+                <!-- Host Selection (Existing Style) -->
+                <div>
+                    <label for="host-select"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">ホストマシン</label>
+                    <select id="host-select"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <option>リビングPC (192.168.1.10)</option>
+                        <option>研究室サーバー (192.168.1.20)</option>
+                    </select>
+                </div>
+
+                <!-- Server Type Selection (New) -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">サーバータイプ</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <!-- Vanilla -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="vanilla" class="peer sr-only" checked
+                                onchange="updateUI()">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Vanilla
+                            </div>
+                        </label>
+                        <!-- Forge -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="forge" class="peer sr-only"
+                                onchange="updateUI()">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Forge
+                            </div>
+                        </label>
+                        <!-- Fabric -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="fabric" class="peer sr-only"
+                                onchange="updateUI()">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Fabric
+                            </div>
+                        </label>
+                        <!-- NeoForge -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="neoforge" class="peer sr-only"
+                                onchange="updateUI()">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                NeoForge
+                            </div>
+                        </label>
+                        <!-- Quilt -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="quilt" class="peer sr-only"
+                                onchange="updateUI()">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Quilt
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Minecraft Version (Existing Style) -->
+                <div>
+                    <label for="version-select"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Minecraft バージョン</label>
+                    <select id="version-select"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <option>1.20.4</option>
+                        <option>1.20.1</option>
+                        <option>1.19.4</option>
+                        <option>1.18.2</option>
+                    </select>
+                </div>
+
+                <!-- Loader Version (New, Dynamic) -->
+                <div id="loader-version-container" class="hidden">
+                    <label id="loader-label" for="loader-version"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Forge バージョン</label>
+                    <select id="loader-version"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+
+                <!-- Server Name (New, but standard style) -->
+                <div>
+                    <label for="server-name"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">サーバー名</label>
+                    <input type="text" id="server-name" value="New Server"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="サーバー名を入力">
+                </div>
+
+            </div>
+            <div class="mt-6 flex justify-end gap-4">
+                <button id="cancel-create-server-btn" type="button"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+                <button id="confirm-create-server-btn" type="button"
+                    class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">作成</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateUI() {
+            const type = document.querySelector('input[name="server-type"]:checked').value;
+            const loaderContainer = document.getElementById('loader-version-container');
+            const loaderLabel = document.getElementById('loader-label');
+            const loaderSelect = document.getElementById('loader-version');
+
+            if (type === 'vanilla') {
+                loaderContainer.classList.add('hidden');
+            } else {
+                loaderContainer.classList.remove('hidden');
+
+                // Mock Data
+                let options = [];
+                switch (type) {
+                    case 'forge':
+                        loaderLabel.textContent = 'Forge バージョン';
+                        options = ['47.2.0 (Recommended)', '47.2.1 (Latest)', '47.1.0'];
+                        break;
+                    case 'fabric':
+                        loaderLabel.textContent = 'Fabric Loader バージョン';
+                        options = ['0.15.7', '0.15.6', '0.14.25'];
+                        break;
+                    case 'neoforge':
+                        loaderLabel.textContent = 'NeoForge バージョン';
+                        options = ['20.4.80-beta', '20.4.50'];
+                        break;
+                    case 'quilt':
+                        loaderLabel.textContent = 'Quilt Loader バージョン';
+                        options = ['0.24.0', '0.23.1'];
+                        break;
+                }
+
+                loaderSelect.innerHTML = options.map(opt => `<option>${opt}</option>`).join('');
+            }
+        }
+
+        // Initialize
+        updateUI();
+    </script>
+</body>
+
+</html>

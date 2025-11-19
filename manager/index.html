@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja" class="dark">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,42 +16,112 @@
             }
         }
     </script>
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+        rel="stylesheet">
 
     <style>
         body {
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
         }
+
         [contenteditable="true"]:empty:before {
             content: attr(placeholder);
-            color: #9ca3af; /* gray-400 */
+            color: #9ca3af;
+            /* gray-400 */
             pointer-events: none;
             display: block;
         }
+
         /* スクロールバー */
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
-        .dark .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
-        
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4b5563;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+
         /* チェックボックス (v4) */
-        .form-switch { display: inline-flex; align-items: center; cursor: pointer; }
-        .form-switch .form-switch-toggle { position: relative; width: 40px; height: 20px; background-color: #e5e7eb; border-radius: 9999px; transition: background-color 0.2s ease; }
-        .dark .form-switch .form-switch-toggle { background-color: #374151; }
-        .form-switch .form-switch-toggle:after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: white; border-radius: 9999px; transition: transform 0.2s ease; }
-        .form-switch input:checked + .form-switch-toggle { background-color: #4f46e5; }
-        .form-switch input:checked + .form-switch-toggle:after { transform: translateX(20px); }
+        .form-switch {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .form-switch .form-switch-toggle {
+            position: relative;
+            width: 40px;
+            height: 20px;
+            background-color: #e5e7eb;
+            border-radius: 9999px;
+            transition: background-color 0.2s ease;
+        }
+
+        .dark .form-switch .form-switch-toggle {
+            background-color: #374151;
+        }
+
+        .form-switch .form-switch-toggle:after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background-color: white;
+            border-radius: 9999px;
+            transition: transform 0.2s ease;
+        }
+
+        .form-switch input:checked+.form-switch-toggle {
+            background-color: #4f46e5;
+        }
+
+        .form-switch input:checked+.form-switch-toggle:after {
+            transform: translateX(20px);
+        }
 
         /* D&D (v4) */
-        .dragging { opacity: 0.5; transform: scale(0.95); }
-        .drop-target-highlight { border-style: dashed; border-color: #4f46e5; background-color: #e0e7ff; }
-        .dark .drop-target-highlight { border-color: #818cf8; background-color: #312e81; }
+        .dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+
+        .drop-target-highlight {
+            border-style: dashed;
+            border-color: #4f46e5;
+            background-color: #e0e7ff;
+        }
+
+        .dark .drop-target-highlight {
+            border-color: #818cf8;
+            background-color: #312e81;
+        }
 
         /* --- v5で追加 --- */
         /* ログの行数制限 (3.5行) */
@@ -68,49 +139,76 @@
         .rotate-180 {
             transform: rotate(180deg);
         }
+
         /* ヘルプポップアップ */
         .group:hover .group-hover\:block {
             display: block;
         }
 
         /* details[open] summary アイコン回転 */
-        details[open] > summary .group-open\:rotate-180 {
+        details[open]>summary .group-open\:rotate-180 {
             transform: rotate(180deg);
         }
     </style>
 </head>
+
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 antialiased">
 
-   <!-- ローディングオーバーレイ -->
-   <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-90 flex flex-col items-center justify-center z-50">
-       <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-primary"></div>
-       <p class="mt-4 text-lg font-semibold text-white">エージェントに接続中...</p>
-   </div>
+    <!-- ローディングオーバーレイ -->
+    <div id="loading-overlay"
+        class="fixed inset-0 bg-gray-900 bg-opacity-90 flex flex-col items-center justify-center z-50">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-primary"></div>
+        <p class="mt-4 text-lg font-semibold text-white">エージェントに接続中...</p>
+    </div>
 
-   <div id="app" class="flex flex-col lg:flex-row min-h-screen" style="visibility: hidden;">
+    <div id="app" class="flex flex-col lg:flex-row min-h-screen" style="visibility: hidden;">
 
-       <aside id="sidebar" class="bg-white dark:bg-gray-800 p-4 lg:w-64 lg:flex-shrink-0 shadow-lg lg:h-screen lg:sticky lg:top-0">
+        <aside id="sidebar"
+            class="bg-white dark:bg-gray-800 p-4 lg:w-64 lg:flex-shrink-0 shadow-lg lg:h-screen lg:sticky lg:top-0">
             <h1 class="text-2xl font-bold text-primary mb-6 border-b border-gray-200 dark:border-gray-700 pb-3">
-                <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"></path></svg>
+                <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2">
+                    </path>
+                </svg>
                 Server Manager
             </h1>
             <nav>
                 <ul class="space-y-2">
                     <li>
-                        <a href="#" id="nav-game-servers" class="flex items-center p-3 rounded-lg text-white bg-primary transition duration-150">
-                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0h6"></path></svg>
+                        <a href="#" id="nav-game-servers"
+                            class="flex items-center p-3 rounded-lg text-white bg-primary transition duration-150">
+                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0h6">
+                                </path>
+                            </svg>
                             ゲームサーバー
                         </a>
                     </li>
                     <li>
-                        <a href="#" id="nav-physical-servers" class="flex items-center p-3 rounded-lg text-gray-600 dark:text-gray-300 transition duration-150 hover:bg-gray-100 dark:hover:bg-gray-700">
-                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h1m-1 0h-1m-14 0h1m-1 0h-1"></path></svg>
+                        <a href="#" id="nav-physical-servers"
+                            class="flex items-center p-3 rounded-lg text-gray-600 dark:text-gray-300 transition duration-150 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h1m-1 0h-1m-14 0h1m-1 0h-1">
+                                </path>
+                            </svg>
                             物理サーバー
                         </a>
                     </li>
                     <li>
-                        <a href="#" class="flex items-center p-3 rounded-lg text-gray-600 dark:text-gray-300 transition duration-150 hover:bg-gray-100 dark:hover:bg-gray-700">
-                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                        <a href="#"
+                            class="flex items-center p-3 rounded-lg text-gray-600 dark:text-gray-300 transition duration-150 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01">
+                                </path>
+                            </svg>
                             設定ファイル
                         </a>
                     </li>
@@ -119,7 +217,7 @@
         </aside>
 
         <main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto" style="max-height: 100vh;">
-            
+
             <div id="server-list-view">
                 <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                     <div>
@@ -127,12 +225,29 @@
                         <p class="text-gray-500 dark:text-gray-400">実行中のサーバーを確認・管理します。</p>
                     </div>
                     <div class="flex items-center gap-4 w-full sm:w-auto">
-                        <button id="dark-mode-toggle" class="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-indigo-400 transition duration-150">
-                            <svg id="sun-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                            <svg id="moon-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                        <button id="dark-mode-toggle"
+                            class="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-indigo-400 transition duration-150">
+                            <svg id="sun-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z">
+                                </path>
+                            </svg>
+                            <svg id="moon-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z">
+                                </path>
+                            </svg>
                         </button>
-                        <button id="add-server-btn" class="w-full sm:w-auto bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300 flex items-center justify-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                        <button id="add-server-btn"
+                            class="w-full sm:w-auto bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300 flex items-center justify-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
+                                fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                                    clip-rule="evenodd" />
+                            </svg>
                             <span>新規サーバー作成</span>
                         </button>
                     </div>
@@ -159,20 +274,27 @@
                         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">物理サーバー管理</h1>
                         <p class="text-gray-500 dark:text-gray-400">エージェントが稼働中のマシンを管理します。</p>
                     </div>
-                    <button id="add-agent-btn" class="w-full sm:w-auto bg-secondary hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300 flex items-center justify-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                    <button id="add-agent-btn"
+                        class="w-full sm:w-auto bg-secondary hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300 flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                                clip-rule="evenodd" />
+                        </svg>
                         <span>エージェント登録</span>
                     </button>
                 </header>
                 <div id="physical-server-list" class="space-y-4 mt-4">
                     <!-- 物理サーバーリストは renderer-ui.js によって動的に描画されます -->
-                    <div id="server-192.168.1.10" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                    <div id="server-192.168.1.10"
+                        class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                         <div>
                             <div class="font-bold text-lg text-gray-900 dark:text-white">リビングPC</div>
                             <div class="text-sm text-gray-500 dark:text-gray-400">192.168.1.10</div>
                         </div>
                         <div id="status-192.168.1.10">
-                            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
+                            <span
+                                class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
                                 <span class="w-2 h-2 bg-yellow-500 rounded-full"></span>
                                 接続待機中...
                             </span>
@@ -181,18 +303,20 @@
                             <div class="text-sm">Ping: <span id="ping-192.168.1.10" class="font-medium">N/A</span></div>
                         </div>
                     </div>
-                    <div id="server-192.168.1.20" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                    <div id="server-192.168.1.20"
+                        class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                         <div>
                             <div class="font-bold text-lg text-gray-900 dark:text-white">研究室サーバー</div>
                             <div class="text-sm text-gray-500 dark:text-gray-400">192.168.1.20</div>
                         </div>
                         <div>
-                            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                            <span
+                                class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
                                 <span class="w-2 h-2 bg-red-500 rounded-full"></span>
                                 切断
                             </span>
                         </div>
-                         <div>
+                        <div>
                             <div class="text-sm">Ping: <span class="font-medium">N/A</span></div>
                         </div>
                     </div>
@@ -211,18 +335,27 @@
     </div>
 
     <!-- 削除確認モーダル -->
-    <div id="delete-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div id="delete-modal"
+        class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md text-center">
-            <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900">
-                <svg class="h-6 w-6 text-red-600 dark:text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            <div
+                class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900">
+                <svg class="h-6 w-6 text-red-600 dark:text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none"
+                    viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
             </div>
             <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">サーバーを削除</h3>
             <div class="mt-2">
-                <p class="text-sm text-gray-500 dark:text-gray-400">サーバー「<span id="deleting-server-name" class="font-bold"></span>」を本当に削除しますか？<br>この操作は元に戻せません。</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">サーバー「<span id="deleting-server-name"
+                        class="font-bold"></span>」を本当に削除しますか？<br>この操作は元に戻せません。</p>
             </div>
             <div class="mt-6 flex justify-center gap-4">
-                <button id="confirm-delete-btn" type="button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">削除する</button>
-                <button id="cancel-delete-btn" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+                <button id="confirm-delete-btn" type="button"
+                    class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">削除する</button>
+                <button id="cancel-delete-btn" type="button"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
             </div>
         </div>
     </div>
@@ -233,26 +366,104 @@
     </div>
 
     <!-- 新規サーバー作成モーダル -->
-    <div id="create-server-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div id="create-server-modal"
+        class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md">
             <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">新規サーバー作成</h3>
             <div class="space-y-4">
+
+                <!-- Host Selection -->
                 <div>
-                    <label for="host-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ホストマシン</label>
-                    <select id="host-select" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700">
-                        <!-- オプションは動的に挿入されます -->
+                    <label for="host-select"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">ホストマシン</label>
+                    <select id="host-select"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <!-- Populated dynamically -->
                     </select>
                 </div>
+
+                <!-- Server Type Selection -->
                 <div>
-                    <label for="version-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">サーバーバージョン</label>
-                    <select id="version-select" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">サーバータイプ</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <!-- Vanilla -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="vanilla" class="peer sr-only" checked>
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Vanilla
+                            </div>
+                        </label>
+                        <!-- Forge -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="forge" class="peer sr-only">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Forge
+                            </div>
+                        </label>
+                        <!-- Fabric -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="fabric" class="peer sr-only">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Fabric
+                            </div>
+                        </label>
+                        <!-- NeoForge -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="neoforge" class="peer sr-only">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                NeoForge
+                            </div>
+                        </label>
+                        <!-- Quilt -->
+                        <label class="cursor-pointer">
+                            <input type="radio" name="server-type" value="quilt" class="peer sr-only">
+                            <div
+                                class="text-center py-2 px-1 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-primary peer-checked:text-white peer-checked:border-primary transition-colors">
+                                Quilt
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Minecraft Version -->
+                <div>
+                    <label for="version-select"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Minecraft バージョン</label>
+                    <select id="version-select"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
                         <option>バージョンを読み込み中...</option>
                     </select>
                 </div>
+
+                <!-- Loader Version (Dynamic) -->
+                <div id="loader-version-container" class="hidden">
+                    <label id="loader-label" for="loader-version"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Forge バージョン</label>
+                    <select id="loader-version"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+
+                <!-- Server Name -->
+                <div>
+                    <label for="server-name"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">サーバー名</label>
+                    <input type="text" id="server-name" value="New Server"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
+                        placeholder="サーバー名を入力">
+                </div>
+
             </div>
             <div class="mt-6 flex justify-end gap-4">
-                <button id="cancel-create-server-btn" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
-                <button id="confirm-create-server-btn" type="button" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">作成</button>
+                <button id="cancel-create-server-btn" type="button"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+                <button id="confirm-create-server-btn" type="button"
+                    class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">作成</button>
             </div>
         </div>
     </div>
@@ -262,27 +473,34 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-2xl">
             <h3 class="text-xl leading-6 font-bold text-gray-900 dark:text-white mb-4">Minecraft EULAへの同意が必要です</h3>
             <div class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                <p>Minecraftサーバーを初めて起動するには、Mojang Studiosの<a href="https://account.mojang.com/documents/minecraft_eula" target="_blank" class="text-primary hover:underline">エンドユーザーライセンス契約(EULA)</a>に同意する必要があります。</p>
+                <p>Minecraftサーバーを初めて起動するには、Mojang Studiosの<a href="https://account.mojang.com/documents/minecraft_eula"
+                        target="_blank" class="text-primary hover:underline">エンドユーザーライセンス契約(EULA)</a>に同意する必要があります。</p>
                 <p class="mt-4">以下の内容を確認し、同意する場合は「同意してサーバーを起動」ボタンを押してください。</p>
             </div>
-            <div class="mt-4 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md p-4 max-h-60 overflow-y-auto custom-scrollbar">
+            <div
+                class="mt-4 bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md p-4 max-h-60 overflow-y-auto custom-scrollbar">
                 <pre id="eula-content" class="text-xs whitespace-pre-wrap font-mono"></pre>
             </div>
             <div class="mt-6 flex justify-end gap-4">
-                <button id="cancel-eula-btn" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
-                <button id="confirm-eula-btn" type="button" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">同意してサーバーを起動</button>
+                <button id="cancel-eula-btn" type="button"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+                <button id="confirm-eula-btn" type="button"
+                    class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">同意してサーバーを起動</button>
             </div>
         </div>
     </div>
 
     <!-- Javaインストールモーダル -->
-    <div id="java-install-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+    <div id="java-install-modal"
+        class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md">
             <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">Javaインストール</h3>
             <div class="space-y-4">
                 <div>
-                    <label for="java-version-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Javaバージョン</label>
-                    <select id="java-version-select" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700">
+                    <label for="java-version-select"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">Javaバージョン</label>
+                    <select id="java-version-select"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700">
                         <option value="8">8</option>
                         <option value="11">11</option>
                         <option value="17">17</option>
@@ -290,17 +508,23 @@
                     </select>
                 </div>
                 <div>
-                    <label for="java-download-url" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ダウンロードURL</label>
-                    <input type="text" id="java-download-url" placeholder="ダウンロードURL" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700">
+                    <label for="java-download-url"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">ダウンロードURL</label>
+                    <input type="text" id="java-download-url" placeholder="ダウンロードURL"
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm bg-gray-50 dark:bg-gray-700">
                 </div>
                 <div>
-                    <label for="java-file-size" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ファイルサイズ</label>
-                    <input type="text" id="java-file-size" readonly class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm sm:text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-300 cursor-not-allowed">
+                    <label for="java-file-size"
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300">ファイルサイズ</label>
+                    <input type="text" id="java-file-size" readonly
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm sm:text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-300 cursor-not-allowed">
                 </div>
             </div>
             <div class="mt-6 flex justify-end gap-4">
-                <button id="cancel-java-install-btn" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
-                <button id="install-java-btn" type="button" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">インストール</button>
+                <button id="cancel-java-install-btn" type="button"
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">キャンセル</button>
+                <button id="install-java-btn" type="button"
+                    class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">インストール</button>
             </div>
         </div>
     </div>
@@ -308,4 +532,5 @@
     <script src="renderer-ui.js"></script>
     <script src="renderer.js"></script>
 </body>
+
 </html>

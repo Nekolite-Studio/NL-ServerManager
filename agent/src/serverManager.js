@@ -123,7 +123,7 @@ function getJsonFromUrl(url) {
  * @param {function} onProgress - 進捗を通知するコールバック関数 (progress, downloadedSize, totalSize)
  * @returns {Promise<void>}
  */
-function downloadFile(url, destPath, onProgress = () => {}) {
+function downloadFile(url, destPath, onProgress = () => { }) {
     return new Promise((resolve, reject) => {
         const request = (currentUrl) => {
             https.get(new URL(currentUrl), (response) => {
@@ -153,8 +153,8 @@ function downloadFile(url, destPath, onProgress = () => {}) {
                         const progress = Math.floor((downloadedSize / totalSize) * 100);
                         // 1%単位で通知する
                         if (progress > lastNotifiedProgress) {
-                             onProgress(progress, downloadedSize, totalSize);
-                             lastNotifiedProgress = progress;
+                            onProgress(progress, downloadedSize, totalSize);
+                            lastNotifiedProgress = progress;
                         }
                     }
                 });
@@ -173,7 +173,7 @@ function downloadFile(url, destPath, onProgress = () => {}) {
                         }
                     });
                 });
-                
+
                 file.on('error', (err) => {
                     fs.unlink(destPath, () => reject(err));
                 });
@@ -182,7 +182,7 @@ function downloadFile(url, destPath, onProgress = () => {}) {
                 reject(err);
             });
         };
-        
+
         request(url);
     });
 }
@@ -202,7 +202,7 @@ function getJavaInstallDir(javaVersion) {
  * @param {string} destDir - 展開先のディレクトリ
  * @returns {Promise<void>}
  */
-function extractArchive(archivePath, destDir, onProgress = () => {}) {
+function extractArchive(archivePath, destDir, onProgress = () => { }) {
     return new Promise((resolve, reject) => {
         const fileExtension = path.extname(archivePath);
         console.log(`[ServerManager] Extracting ${archivePath} to ${destDir}`);
@@ -239,7 +239,7 @@ function extractArchive(archivePath, destDir, onProgress = () => {}) {
                 lastNotifiedProgress = progress;
             }
         });
-        
+
         onProgress({ status: 'extracting', message: 'アーカイブを展開中...', progress: 0 });
 
         if (fileExtension === '.zip') {
@@ -260,15 +260,15 @@ function extractArchive(archivePath, destDir, onProgress = () => {}) {
                 cwd: destDir,
                 strip: 1,
             }))
-            .on('finish', () => {
-                if (lastNotifiedProgress < 100) {
-                    onProgress({ status: 'extracting', message: '展開完了', progress: 100 });
-                }
-                onProgress({ status: 'extracted', message: '展開完了', progress: 100 });
-                console.log(`[ServerManager] Successfully extracted ${archivePath}`);
-                resolve();
-            })
-            .on('error', reject);
+                .on('finish', () => {
+                    if (lastNotifiedProgress < 100) {
+                        onProgress({ status: 'extracting', message: '展開完了', progress: 100 });
+                    }
+                    onProgress({ status: 'extracted', message: '展開完了', progress: 100 });
+                    console.log(`[ServerManager] Successfully extracted ${archivePath}`);
+                    resolve();
+                })
+                .on('error', reject);
         } else {
             reject(new Error(`Unsupported archive format: ${fileExtension}`));
         }
@@ -297,6 +297,37 @@ function getJavaExecutablePath(javaInstallDir) {
         }
     }
     return javaPath;
+}
+
+/**
+ * ランタイム設定からJavaの実行可能ファイルパスを解決する
+ * @param {object} runtimeConfig
+ * @returns {string}
+ */
+function resolveJavaExecutable(runtimeConfig) {
+    const { java_path, java_version } = runtimeConfig;
+    let javaExecutable;
+
+    if (java_path && java_path !== 'default') {
+        console.log(`[ServerManager] Using directly specified Java path: ${java_path}`);
+        if (!fs.existsSync(java_path)) {
+            throw new Error(`指定されたJavaパスが見つかりません: ${java_path}`);
+        }
+        javaExecutable = java_path;
+    } else if (java_version) {
+        try {
+            const javaInstallDir = getJavaInstallDir(String(java_version));
+            javaExecutable = getJavaExecutablePath(javaInstallDir);
+            console.log(`[ServerManager] Using Java from configured version ${java_version}: ${javaExecutable}`);
+        } catch (error) {
+            console.error(`[ServerManager] Failed to get Java executable for version ${java_version}:`, error);
+            throw new Error(`要求されたJava ${java_version} はインストールされていません。物理サーバー詳細画面からインストールしてください。`);
+        }
+    } else {
+        console.log(`[ServerManager] java_path or java_version not specified. Falling back to system default 'java'.`);
+        javaExecutable = 'java';
+    }
+    return javaExecutable;
 }
 
 /**
@@ -388,8 +419,74 @@ function getAllServers() {
  * @param {function} onProgress - 進捗を通知するためのコールバック関数
  * @returns {object | null} - 更新/作成後のサーバー設定オブジェクト、または失敗した場合はnull
  */
-async function createServer(serversDirectory, serverConfig, onProgress = () => {}) {
-    const { versionId, runtime, ...restConfig } = serverConfig;
+
+async function installForgeServer(serverDir, mcVersion, forgeVersion, javaExecutable, onProgress) {
+    const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVersion}/forge-${mcVersion}-${forgeVersion}-installer.jar`;
+    const installerPath = path.join(serverDir, 'installer.jar');
+
+    console.log(`[ServerManager] Downloading Forge Installer from ${installerUrl}`);
+    onProgress({ status: 'downloading', message: 'Forgeインストーラーをダウンロード中...', progress: 0 });
+
+    await downloadFile(installerUrl, installerPath, (p) => {
+        onProgress({ status: 'downloading', message: `Forgeインストーラーをダウンロード中... ${p}%`, progress: p });
+    });
+
+    onProgress({ status: 'installing', message: 'Forgeサーバーをインストール中 (これには時間がかかります)...', progress: 0 });
+    console.log(`[ServerManager] Running Forge Installer...`);
+
+    return new Promise((resolve, reject) => {
+        // インストーラーはメモリを大量に消費する場合があるため、ヒープサイズを増やす
+        // また、IPv4優先、ヘッドレスモード明示、G1GC使用でパフォーマンス改善を図る
+        const installerArgs = [
+            '-Xmx4G',
+            '-Djava.net.preferIPv4Stack=true',
+            '-Djava.awt.headless=true',
+            '-XX:+UseG1GC',
+            '-jar',
+            'installer.jar',
+            '--installServer'
+        ];
+        
+        const process = spawn(javaExecutable, installerArgs, {
+            cwd: serverDir,
+            stdio: 'inherit'
+        });
+
+        process.on('close', (code) => {
+            if (code === 0) {
+                console.log('[ServerManager] Forge installation successful.');
+                // Cleanup
+                try {
+                    if (fs.existsSync(installerPath)) fs.unlinkSync(installerPath);
+                    const logFile = path.join(serverDir, 'installer.jar.log');
+                    if (fs.existsSync(logFile)) fs.unlinkSync(logFile);
+                } catch (e) {
+                    console.warn('[ServerManager] Failed to cleanup installer files:', e);
+                }
+                resolve();
+            } else {
+                reject(new Error(`Forge installation failed with code ${code}`));
+            }
+        });
+
+        process.on('error', (err) => reject(err));
+    });
+}
+
+function findForgeArgsFile(serverDir) {
+    const forgeDir = path.join(serverDir, 'libraries', 'net', 'minecraftforge', 'forge');
+    if (!fs.existsSync(forgeDir)) return null;
+
+    const versions = fs.readdirSync(forgeDir);
+    for (const ver of versions) {
+        const argsPath = path.join(forgeDir, ver, 'unix_args.txt');
+        if (fs.existsSync(argsPath)) return argsPath;
+    }
+    return null;
+}
+
+async function createServer(serversDirectory, serverConfig, onProgress = () => { }) {
+    const { versionId, serverType, loaderVersion, runtime, ...restConfig } = serverConfig;
     const id = uuidv4();
     const serverDir = path.join(serversDirectory, id);
     const configPath = path.join(serverDir, SERVER_CONFIG_FILENAME);
@@ -415,38 +512,55 @@ async function createServer(serversDirectory, serverConfig, onProgress = () => {
         return null;
     }
 
-    console.log(`[ServerManager] versionId specified: ${versionId}. Starting download process.`);
-    try {
-        const manifest = await getJsonFromUrl('https://launchermeta.mojang.com/mc/game/version_manifest.json');
-        const versionInfo = manifest.versions.find(v => v.id === versionId);
-        if (!versionInfo) {
-            throw new Error(`Version ${versionId} not found in version manifest.`);
-        }
-        const versionDetails = await getJsonFromUrl(versionInfo.url);
-        const serverJarUrl = versionDetails.downloads?.server?.url;
-        if (!serverJarUrl) {
-            throw new Error(`Server JAR download URL not found for version ${versionId}.`);
-        }
-        const destPath = path.join(serverDir, 'server.jar');
-        console.log(`[ServerManager] Downloading server.jar for version ${versionId} from ${serverJarUrl} to ${destPath}`);
-        
-        onProgress({ status: 'downloading', message: `サーバーJAR (v${versionId}) をダウンロード中...`, progress: 0 });
-        await downloadFile(serverJarUrl, destPath, (progress) => {
-            onProgress({ status: 'downloading', message: `サーバーJARをダウンロード中... ${progress}%`, progress });
-        });
-        onProgress({ status: 'downloaded', message: 'ダウンロード完了', progress: 100 });
+    console.log(`[ServerManager] Creating server: ${versionId} (${serverType || 'vanilla'})`);
 
-        console.log(`[ServerManager] Successfully downloaded server.jar.`);
+    try {
+        if (serverType === 'forge') {
+            if (!loaderVersion) throw new Error('Forge version (loaderVersion) is required for Forge servers.');
+
+            // Javaパスを解決する
+            // createServer時点では runtime.java_version が渡されているはず
+            const javaExecutable = resolveJavaExecutable(runtime);
+
+            await installForgeServer(serverDir, versionId, loaderVersion, javaExecutable, onProgress);
+        } else {
+            // Vanilla (Default)
+            console.log(`[ServerManager] versionId specified: ${versionId}. Starting download process.`);
+            const manifest = await getJsonFromUrl('https://launchermeta.mojang.com/mc/game/version_manifest.json');
+            const versionInfo = manifest.versions.find(v => v.id === versionId);
+            if (!versionInfo) {
+                throw new Error(`Version ${versionId} not found in version manifest.`);
+            }
+            const versionDetails = await getJsonFromUrl(versionInfo.url);
+            const serverJarUrl = versionDetails.downloads?.server?.url;
+            if (!serverJarUrl) {
+                throw new Error(`Server JAR download URL not found for version ${versionId}.`);
+            }
+            const destPath = path.join(serverDir, 'server.jar');
+            console.log(`[ServerManager] Downloading server.jar for version ${versionId} from ${serverJarUrl} to ${destPath}`);
+
+            onProgress({ status: 'downloading', message: `サーバーJAR (v${versionId}) をダウンロード中...`, progress: 0 });
+            await downloadFile(serverJarUrl, destPath, (progress) => {
+                onProgress({ status: 'downloading', message: `サーバーJARをダウンロード中... ${progress}%`, progress });
+            });
+            onProgress({ status: 'downloaded', message: 'ダウンロード完了', progress: 100 });
+
+            console.log(`[ServerManager] Successfully downloaded server.jar.`);
+        }
     } catch (error) {
-        console.error(`[ServerManager] Failed to download server.jar for version ${versionId}:`, error);
+        console.error(`[ServerManager] Failed to create server for version ${versionId}:`, error);
         fs.rmSync(serverDir, { recursive: true, force: true });
-        console.log(`[ServerManager] Cleaned up directory ${serverDir} due to download failure.`);
+        console.log(`[ServerManager] Cleaned up directory ${serverDir} due to failure.`);
         throw error;
     }
 
     // runtimeにversionIdを含めてgetDefaultServerConfigに渡すことで、デフォルト名にバージョンを含める
     const runtimeWithVersion = { ...runtime, versionId };
     const finalConfig = getDefaultServerConfig(id, restConfig.server_name, runtimeWithVersion);
+
+    // サーバータイプとローダーバージョンを保存
+    finalConfig.server_type = serverType || 'vanilla';
+    finalConfig.loader_version = loaderVersion || null;
 
     // java_versionが存在すれば、保存前に必ず文字列に変換する
     if (finalConfig.runtime && finalConfig.runtime.java_version != null) {
@@ -486,7 +600,7 @@ async function updateServer(serversDirectory, serverId, serverConfig) {
 
     const serverDir = path.join(serversDirectory, serverId);
     const configPath = path.join(serverDir, SERVER_CONFIG_FILENAME);
-    
+
     // versionId in update is not supported for now.
     const { versionId, ...restConfig } = serverConfig;
     if (versionId) {
@@ -503,7 +617,7 @@ async function updateServer(serversDirectory, serverId, serverConfig) {
         servers.set(serverId, finalConfig);
         return { config: finalConfig, path: resolvedPath };
     }
-    
+
     return null; // Failed to save
 }
 
@@ -520,7 +634,7 @@ async function deleteServer(serversDirectory, serverId) {
     }
     // serversDirectoryは既に解決済み
     const serverDir = path.join(serversDirectory, serverId);
-    
+
     if (!servers.has(serverId) && !fs.existsSync(serverDir)) {
         console.warn(`[ServerManager] Attempted to delete a server that does not exist on disk or in memory: ${serverId}`);
         return { success: true, path: serverDir }; // 存在しないので、結果的に削除成功と同じ状態
@@ -548,7 +662,7 @@ async function deleteServer(serversDirectory, serverId) {
  * @param {string} serverId
  * @returns {Promise<boolean>}
  */
-async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) {
+async function startServer(serversDirectory, serverId, ws, onUpdate = () => { }) {
     const serverConfig = servers.get(serverId);
     if (!serverConfig) {
         throw new Error(`Server config not found for ${serverId}`);
@@ -586,30 +700,10 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
     const { java_path, java_version, server_jar, min_memory, max_memory, custom_args } = serverConfig.runtime;
 
     let javaExecutable;
-
-    // 1. java_path が直接指定されており、'default'ではない場合、それを使う
-    if (java_path && java_path !== 'default') {
-        console.log(`[ServerManager] Using directly specified Java path: ${java_path}`);
-        if (!fs.existsSync(java_path)) {
-             throw new Error(`指定されたJavaパスが見つかりません: ${java_path}`);
-        }
-        javaExecutable = java_path;
-    }
-    // 2. java_version が指定されていれば、インストール済みか確認して使う
-    else if (java_version) {
-        try {
-            const javaInstallDir = getJavaInstallDir(String(java_version));
-            javaExecutable = getJavaExecutablePath(javaInstallDir);
-            console.log(`[ServerManager] Using Java from configured version ${java_version}: ${javaExecutable}`);
-        } catch (error) {
-            console.error(`[ServerManager] Failed to get Java executable for version ${java_version}:`, error);
-            throw new Error(`要求されたJava ${java_version} はインストールされていません。物理サーバー詳細画面からインストールしてください。`);
-        }
-    }
-    // 3. どちらもなければ、システムのデフォルト'java'にフォールバック
-    else {
-        console.log(`[ServerManager] java_path or java_version not specified. Falling back to system default 'java'.`);
-        javaExecutable = 'java';
+    try {
+        javaExecutable = resolveJavaExecutable(serverConfig.runtime);
+    } catch (error) {
+        throw error;
     }
 
     // JVM引数を動的に構築
@@ -625,7 +719,35 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
         final_jvm_args.push(...custom_args.split(' ').filter(arg => arg.length > 0));
     }
 
-    const args = [...final_jvm_args, '-jar', server_jar, 'nogui'];
+    const args = [...final_jvm_args];
+
+    if (serverConfig.server_type === 'forge') {
+        // Forge Startup Logic
+        const argsFile = findForgeArgsFile(serverDir);
+        if (argsFile) {
+            console.log(`[ServerManager] Found Forge args file: ${argsFile}`);
+            // unix_args.txtのパスは絶対パスで指定する必要があるかもしれないが、
+            // @libraries/... という形式は相対パスを期待している可能性がある。
+            // 通常、java @user_jvm_args.txt @libraries/.../unix_args.txt "$@"
+            // user_jvm_args.txt が存在すればそれも使う
+
+            if (fs.existsSync(path.join(serverDir, 'user_jvm_args.txt'))) {
+                args.push(`@user_jvm_args.txt`);
+            }
+
+            // unix_args.txtへのパスを相対パスに変換 (serverDir基準)
+            const relativeArgsPath = path.relative(serverDir, argsFile);
+            args.push(`@${relativeArgsPath}`);
+
+            args.push('nogui');
+        } else {
+            console.warn('[ServerManager] Forge args file not found. Falling back to server.jar (Legacy Forge?)');
+            args.push('-jar', server_jar, 'nogui');
+        }
+    } else {
+        // Vanilla Startup Logic
+        args.push('-jar', server_jar, 'nogui');
+    }
 
     console.log(`[ServerManager] Starting server ${serverId} in ${serverDir}`);
     console.log(`[ServerManager] Command: ${javaExecutable} ${args.join(' ')}`);
@@ -678,7 +800,7 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
             serverConfig.status = ServerStatus.STOPPED;
             onUpdate({ type: 'status_change', payload: ServerStatus.STOPPED });
         });
-        
+
         process.on('error', (err) => {
             console.error(`[ServerManager] Failed to start server process for ${serverId}:`, err);
             runningProcesses.delete(serverId);
@@ -696,7 +818,7 @@ async function startServer(serversDirectory, serverId, ws, onUpdate = () => {}) 
  * @param {string} serverId
  * @returns {Promise<boolean>}
  */
-async function stopServer(serverId, onUpdate = () => {}) {
+async function stopServer(serverId, onUpdate = () => { }) {
     const process = runningProcesses.get(serverId);
     const serverConfig = servers.get(serverId);
 
@@ -716,11 +838,11 @@ async function stopServer(serverId, onUpdate = () => {}) {
     }
 
     console.log(`[ServerManager] Sending 'stop' command to server ${serverId}...`);
-    
-    // 先にメトリクス収集を停止
-stopMetricsStream(serverId);
 
-// ステータスを 'STOPPING' に更新
+    // 先にメトリクス収集を停止
+    stopMetricsStream(serverId);
+
+    // ステータスを 'STOPPING' に更新
     if (serverConfig) {
         serverConfig.status = ServerStatus.STOPPING;
         onUpdate({ type: 'status_change', payload: ServerStatus.STOPPING });
@@ -737,9 +859,9 @@ stopMetricsStream(serverId);
             rcon.end();
             runningRconClients.delete(serverId);
         }
-        
+
         // TODO: タイムアウトを設け、指定時間内に終了しない場合は process.kill() を呼ぶ
-        
+
         return true;
     } catch (error) {
         console.error(`[ServerManager] Error sending 'stop' command to server ${serverId}:`, error);
@@ -821,7 +943,7 @@ async function getGameServerMetrics(serverId) {
         const tpsMatch = tpsResponse.match(/TPS from last 1m, 5m, 15m: ([\d\.]+), ([\d\.]+), ([\d\.]+)/);
         if (tpsMatch && tpsMatch[1]) {
             // PaperMCの場合、tpsが20.0*のようにアスタリスクが付くことがある
-            tps = parseFloat(tpsMatch[1].replace('*',''));
+            tps = parseFloat(tpsMatch[1].replace('*', ''));
         }
 
         // プレイヤー数のパース
@@ -932,7 +1054,7 @@ async function acceptEula(serversDirectory, serverId) {
             // ファイルが存在しない場合は、EULAのURLを含む内容で新規作成
             content = `# By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).\n#\n#${new Date().toString()}\neula=true\n`;
         }
-        
+
         fs.writeFileSync(eulaPath, content, 'utf-8');
         console.log(`[ServerManager] EULA accepted for server ${serverId}.`);
         return { success: true };
@@ -992,18 +1114,18 @@ async function updateServerProperties(serversDirectory, serverId, newProperties)
 
     try {
         const server = await readJson(serverConfigPath);
-        
+
         // 新しいプロパティを既存のものとマージ
         const mergedProperties = { ...(server.properties || {}), ...newProperties };
 
         // スキーマでパースして不要なプロパティを削除し、型を変換
         const validatedProperties = ServerPropertiesSchema.parse(mergedProperties);
-        
+
         server.properties = validatedProperties;
-        
+
         // nl-server_manager.jsonを更新
         await writeJson(serverConfigPath, server);
-        
+
         // server.properties ファイルを更新
         await writeProperties(serverPath, validatedProperties);
 

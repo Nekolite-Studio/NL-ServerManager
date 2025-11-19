@@ -4,4 +4,4 @@ Nekolite-Server-Managerワークスペースディレクトリにおける、kil
 
 ## ガイドライン
 
-- ユーザーから最初のプロンプトを受け取った場合、必ず`.kilocode/code-reviewer/`と`markdown/`(completed-task`を除く)にあるmdファイルを全て読み込むこと（最重要）
+- ユーザーから最初のプロンプトを受け取った場合、必ず`markdown/`(completed-task`を除く)にあるmdファイルを全て読み込むこと（最重要）

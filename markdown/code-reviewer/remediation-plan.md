@@ -22,25 +22,6 @@
 
 **修正例 (`apply_diff`用):**
 ```diff
-<<<<<<< SEARCH
-// manager/main.js L112-
-    switch(type) {
-        case Message.SERVER_LIST_UPDATE:
-            mainWindow.webContents.send('server-list-update', payload);
-            break;
-        case 'progress-update':
-            mainWindow.webContents.send('progress-update', payload);
-            break;
-        case 'operation-result':
-            mainWindow.webContents.send('operation-result', payload);
-            break;
-        case 'server-log':
-            mainWindow.webContents.send('server-log', payload);
-            break;
-        case 'server-status-update':
-            mainWindow.webContents.send('server-status-update', payload);
-            break;
-=======
 // manager/main.js L112-
     switch(type) {
         case Message.SERVER_LIST_UPDATE:
@@ -58,7 +39,6 @@
         case Message.SERVER_STATUS_UPDATE:
             mainWindow.webContents.send(Message.SERVER_STATUS_UPDATE, payload);
             break;
->>>>>>> REPLACE
 ```
 
 #### 1.2. `agent/index.js`の修正
@@ -69,15 +49,6 @@ Managerからのメッセージを処理する`switch`文で、`'get-metrics'`�
 
 **修正例 (`apply_diff`用):**
 ```diff
-<<<<<<< SEARCH
-// agent/index.js L138-
-    switch (type) {
-      case 'get-metrics': // Message.GET_METRICS を使うべき
-        ws.send(JSON.stringify({ type: 'metrics-data', payload: getMetrics() }));
-        break;
-      // ... other cases
-    }
-=======
 // agent/index.js L138-
     switch (type) {
       case Message.GET_METRICS:
@@ -85,7 +56,6 @@ Managerからのメッセージを処理する`switch`文で、`'get-metrics'`�
         break;
       // ... other cases
     }
->>>>>>> REPLACE
 ```
 *補足: 応答メッセージの`type`も`'metrics-data'`から`Message.METRICS_DATA`に修正することが望ましいです。*
 

@@ -109,10 +109,10 @@ function connectToAgent(id) {
             const { type, requestId, payload, operation } = parsedData;
 
             if (type !== Message.GAME_SERVER_METRICS_UPDATE && type !== Message.PHYSICAL_SERVER_METRICS_UPDATE) {
-                 console.log(`Data from ${agent.config.alias}:`, parsedData);
+                console.log(`Data from ${agent.config.alias}:`, parsedData);
             }
 
-            switch(type) {
+            switch (type) {
                 case Message.GAME_SERVER_METRICS_UPDATE:
                     sendToRenderer(Message.GAME_SERVER_METRICS_UPDATE, { agentId: id, payload });
                     break;
@@ -142,8 +142,8 @@ function connectToAgent(id) {
                     sendToRenderer(Message.OPERATION_RESULT, { agentId: id, requestId, operation, ...parsedData });
                     break;
                 case Message.SERVER_UPDATE:
-                     sendToRenderer(Message.SERVER_UPDATE, { agentId: id, payload: payload });
-                     break;
+                    sendToRenderer(Message.SERVER_UPDATE, { agentId: id, payload: payload });
+                    break;
                 case Message.NOTIFY_WARN:
                     sendToRenderer(Message.NOTIFY_WARN, { agentId: id, payload: payload });
                     break;
@@ -221,247 +221,258 @@ function broadcastAgentList() {
 
 // --- Electron App Setup ---
 
-function createWindow () {
-  const { width, height } = getWindowBounds();
-  mainWindow = new BrowserWindow({
-    width,
-    height,
-    webPreferences: {
-      preload: path.join(__dirname, 'dist/preload.js')
-    }
-  });
+function createWindow() {
+    const { width, height } = getWindowBounds();
+    mainWindow = new BrowserWindow({
+        width,
+        height,
+        webPreferences: {
+            preload: path.join(__dirname, 'dist/preload.js')
+        }
+    });
 
-  // ウィンドウサイズが変更されたら保存する
-  mainWindow.on('resize', () => {
-    const { width, height } = mainWindow.getBounds();
-    setWindowBounds({ width, height });
-  });
+    // ウィンドウサイズが変更されたら保存する
+    mainWindow.on('resize', () => {
+        const { width, height } = mainWindow.getBounds();
+        setWindowBounds({ width, height });
+    });
 
-  mainWindow.loadFile('index.html');
-  // mainWindow.webContents.openDevTools();
+    mainWindow.loadFile('index.html');
+    // mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(() => {
-  createWindow();
+    createWindow();
 
-  // 保存されたAgentリストを読み込んで接続を開始
-  const storedAgents = getAgents();
-  if (storedAgents && storedAgents.length > 0) {
-      console.log(`Loading ${storedAgents.length} agent(s) from store.`);
-      storedAgents.forEach(agentData => {
-          // ストアから渡されるデータをコンソールに出力して確認
-          console.log('Data from store for createAgent:', agentData);
-          // ストアからはフラットな構造で読み込まれるため、メモリで扱うconfigオブジェクトに再構成する
-          const { id, ip, port, alias } = agentData;
-          createAgent(id, { ip, port, alias });
-      });
-  } else {
-      // 初回起動時など、保存されたAgentがない場合はローカルをデフォルトで追加
-      console.log('No stored agents found. Adding default local agent.');
-      const id = uuidv4();
-      createAgent(id, { ip: '127.0.0.1', port: 8080, alias: 'Local Agent' });
-      persistAgents();
-  }
-
-
-  // --- IPC Handlers ---
-
-  ipcMain.on('request-agent-list', (event) => {
-    broadcastAgentList();
-  });
-
-  ipcMain.on('request-all-servers', (event) => {
-    console.log('Received request for all servers from renderer.');
-    for (const agent of agents.values()) {
-        if (agent.ws && agent.ws.readyState === WebSocket.OPEN) {
-            agent.ws.send(JSON.stringify({ type: Message.GET_ALL_SERVERS }));
-        }
-    }
-  });
-
-  // --- 起動シーケンス ---
-  ipcMain.on('renderer-ready', () => {
-    console.log('Renderer is ready. Broadcasting agent list.');
-    // 1. まずAgent(物理サーバー)のリストをブロードキャストする
-    broadcastAgentList();
-    // 2. UIに初期ロードが完了したことを通知 (サーバーリスト要求はUI側が担当)
-    sendToRenderer('initial-load-complete');
-  });
-
-  ipcMain.on('add-agent', (event, config) => {
-    console.log('Received request to add agent:', config);
-    const id = uuidv4();
-    createAgent(id, config);
-    persistAgents();
-  });
-
-  ipcMain.on('update-agent-settings', (event, { agentId, config }) => {
-    const agent = getAgent(agentId);
-    if (agent) {
-        console.log(`Updating agent ${agentId} with new config:`, config);
-        agent.config = config;
+    // 保存されたAgentリストを読み込んで接続を開始
+    const storedAgents = getAgents();
+    if (storedAgents && storedAgents.length > 0) {
+        console.log(`Loading ${storedAgents.length} agent(s) from store.`);
+        storedAgents.forEach(agentData => {
+            // ストアから渡されるデータをコンソールに出力して確認
+            console.log('Data from store for createAgent:', agentData);
+            // ストアからはフラットな構造で読み込まれるため、メモリで扱うconfigオブジェクトに再構成する
+            const { id, ip, port, alias } = agentData;
+            createAgent(id, { ip, port, alias });
+        });
+    } else {
+        // 初回起動時など、保存されたAgentがない場合はローカルをデフォルトで追加
+        console.log('No stored agents found. Adding default local agent.');
+        const id = uuidv4();
+        createAgent(id, { ip: '127.0.0.1', port: 8080, alias: 'Local Agent' });
         persistAgents();
-        if (agent.ws) {
-            agent.ws.close(); // closeイベントで再接続がトリガーされる
+    }
+
+
+    // --- IPC Handlers ---
+
+    ipcMain.on('request-agent-list', (event) => {
+        broadcastAgentList();
+    });
+
+    ipcMain.on('request-all-servers', (event) => {
+        console.log('Received request for all servers from renderer.');
+        for (const agent of agents.values()) {
+            if (agent.ws && agent.ws.readyState === WebSocket.OPEN) {
+                agent.ws.send(JSON.stringify({ type: Message.GET_ALL_SERVERS }));
+            }
+        }
+    });
+
+    // --- 起動シーケンス ---
+    ipcMain.on('renderer-ready', () => {
+        console.log('Renderer is ready. Broadcasting agent list.');
+        // 1. まずAgent(物理サーバー)のリストをブロードキャストする
+        broadcastAgentList();
+        // 2. UIに初期ロードが完了したことを通知 (サーバーリスト要求はUI側が担当)
+        sendToRenderer('initial-load-complete');
+    });
+
+    ipcMain.on('add-agent', (event, config) => {
+        console.log('Received request to add agent:', config);
+        const id = uuidv4();
+        createAgent(id, config);
+        persistAgents();
+    });
+
+    ipcMain.on('update-agent-settings', (event, { agentId, config }) => {
+        const agent = getAgent(agentId);
+        if (agent) {
+            console.log(`Updating agent ${agentId} with new config:`, config);
+            agent.config = config;
+            persistAgents();
+            if (agent.ws) {
+                agent.ws.close(); // closeイベントで再接続がトリガーされる
+            } else {
+                connectToAgent(agentId);
+            }
+            broadcastAgentStatus(agentId);
+        }
+    });
+
+    ipcMain.on('delete-agent', (event, { agentId }) => {
+        console.log(`Received request to delete agent: ${agentId}`);
+        deleteAgent(agentId);
+    });
+
+    // Agentにメッセージをプロキシする汎用ハンドラ
+    ipcMain.on('proxy-to-agent', (event, { agentId, message }) => {
+        const agent = getAgent(agentId);
+        if (agent && agent.ws && agent.ws.readyState === WebSocket.OPEN) {
+            const requestId = uuidv4();
+            const messageWithId = { ...message, requestId };
+            agent.ws.send(JSON.stringify(messageWithId));
+
+            // 操作を追跡マップに追加
+            pendingOperations.set(requestId, {
+                agentId,
+                operation: message.type,
+                // このPromiseはタイムアウトや明示的な応答で使用できる
+                resolve: () => { },
+                reject: (err) => { console.error(`Operation ${message.type} (${requestId}) failed:`, err); }
+            });
+
         } else {
-            connectToAgent(agentId);
+            console.log(`Cannot proxy message: Agent ${agentId} is not connected.`);
+            sendToRenderer('operation-result', {
+                agentId,
+                requestId: null,
+                operation: message.type,
+                success: false,
+                error: { message: 'Agent is not connected.' }
+            });
         }
-        broadcastAgentStatus(agentId);
-    }
-  });
+    });
 
-  ipcMain.on('delete-agent', (event, { agentId }) => {
-    console.log(`Received request to delete agent: ${agentId}`);
-    deleteAgent(agentId);
-  });
+    // create-server と install-java は proxy-to-agent を使うようにUI側で変更するため、古いハンドラは削除
 
-  // Agentにメッセージをプロキシする汎用ハンドラ
-  ipcMain.on('proxy-to-agent', (event, { agentId, message }) => {
-      const agent = getAgent(agentId);
-      if (agent && agent.ws && agent.ws.readyState === WebSocket.OPEN) {
-          const requestId = uuidv4();
-          const messageWithId = { ...message, requestId };
-          agent.ws.send(JSON.stringify(messageWithId));
-          
-          // 操作を追跡マップに追加
-          pendingOperations.set(requestId, {
-              agentId,
-              operation: message.type,
-              // このPromiseはタイムアウトや明示的な応答で使用できる
-              resolve: () => {},
-              reject: (err) => { console.error(`Operation ${message.type} (${requestId}) failed:`, err); }
-          });
+    // Adoptium APIからJavaのダウンロード情報を取得するハンドラー
+    ipcMain.handle('getJavaDownloadInfo', async (event, { feature_version, os, arch }) => {
+        try {
+            const jvm_impl = 'hotspot';
+            const image_type = 'jdk';
+            const vendor = 'eclipse';
 
-      } else {
-          console.log(`Cannot proxy message: Agent ${agentId} is not connected.`);
-          sendToRenderer('operation-result', {
-              agentId,
-              requestId: null,
-              operation: message.type,
-              success: false,
-              error: { message: 'Agent is not connected.' }
-          });
-      }
-  });
+            const apiUrl = `https://api.adoptium.net/v3/assets/latest/${feature_version}/${jvm_impl}`;
+            const response = await axios.get(apiUrl, {
+                params: {
+                    os,
+                    architecture: arch,
+                    image_type,
+                    vendor
+                }
+            });
 
-  // create-server と install-java は proxy-to-agent を使うようにUI側で変更するため、古いハンドラは削除
+            const release = response.data[0]; // 最初のリリースを取得
 
-  // Adoptium APIからJavaのダウンロード情報を取得するハンドラー
-  ipcMain.handle('getJavaDownloadInfo', async (event, { feature_version, os, arch }) => {
-    try {
-      const jvm_impl = 'hotspot';
-      const image_type = 'jdk';
-      const vendor = 'eclipse';
-
-      const apiUrl = `https://api.adoptium.net/v3/assets/latest/${feature_version}/${jvm_impl}`;
-      const response = await axios.get(apiUrl, {
-        params: {
-          os,
-          architecture: arch,
-          image_type,
-          vendor
+            if (release && release.binary && release.binary.package) {
+                const downloadLink = release.binary.package.link;
+                const fileSize = release.binary.package.size;
+                console.log(`Java Download Info: URL=${downloadLink}, Size=${fileSize}`);
+                return { success: true, downloadLink, fileSize };
+            } else {
+                console.warn('No download link or file size found in Adoptium API response.');
+                return { success: false, error: 'Download information not found.' };
+            }
+        } catch (error) {
+            console.error('Error fetching Java download info from Adoptium API:', error);
+            return { success: false, error: error.message };
         }
-      });
+    });
 
-      const release = response.data[0]; // 最初のリリースを取得
+    // --- Java Version Detection ---
+    const MANIFEST_URL_V2 = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 
-      if (release && release.binary && release.binary.package) {
-        const downloadLink = release.binary.package.link;
-        const fileSize = release.binary.package.size;
-        console.log(`Java Download Info: URL=${downloadLink}, Size=${fileSize}`);
-        return { success: true, downloadLink, fileSize };
-      } else {
-        console.warn('No download link or file size found in Adoptium API response.');
-        return { success: false, error: 'Download information not found.' };
-      }
-    } catch (error) {
-      console.error('Error fetching Java download info from Adoptium API:', error);
-      return { success: false, error: error.message };
+    /**
+     * リリース日時に基づいてJavaバージョンを判定するフォールバック関数
+     * @param {Date} date
+     * @returns {number}
+     */
+    function detectJavaByDate(date) {
+        if (date < new Date("2021-06-08T00:00:00Z")) return 8;   // 1.16.5まで
+        if (date < new Date("2021-11-30T00:00:00Z")) return 16;  // 1.17.x
+        if (date < new Date("2024-04-23T00:00:00Z")) return 17;  // 1.18〜1.20.4
+        return 21;                                               // 1.20.5+
     }
-  });
 
-  // --- Java Version Detection ---
-  const MANIFEST_URL_V2 = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+    /**
+     * 指定されたMinecraftバージョンに必要なJavaのメジャーバージョンを取得する
+     * @param {string} mcVersion
+     * @returns {Promise<number>}
+     */
+    async function getRequiredJavaVersion(mcVersion) {
+        const manifest = (await axios.get(MANIFEST_URL_V2)).data;
+        const entry = manifest.versions.find(v => v.id === mcVersion);
+        if (!entry) throw new Error(`Version not found in manifest: ${mcVersion}`);
 
-  /**
-   * リリース日時に基づいてJavaバージョンを判定するフォールバック関数
-   * @param {Date} date
-   * @returns {number}
-   */
-  function detectJavaByDate(date) {
-      if (date < new Date("2021-06-08T00:00:00Z")) return 8;   // 1.16.5まで
-      if (date < new Date("2021-11-30T00:00:00Z")) return 16;  // 1.17.x
-      if (date < new Date("2024-04-23T00:00:00Z")) return 17;  // 1.18〜1.20.4
-      return 21;                                               // 1.20.5+
-  }
+        const versionJson = (await axios.get(entry.url)).data;
 
-  /**
-   * 指定されたMinecraftバージョンに必要なJavaのメジャーバージョンを取得する
-   * @param {string} mcVersion
-   * @returns {Promise<number>}
-   */
-  async function getRequiredJavaVersion(mcVersion) {
-      const manifest = (await axios.get(MANIFEST_URL_V2)).data;
-      const entry = manifest.versions.find(v => v.id === mcVersion);
-      if (!entry) throw new Error(`Version not found in manifest: ${mcVersion}`);
+        if (versionJson.javaVersion && versionJson.javaVersion.majorVersion) {
+            return versionJson.javaVersion.majorVersion;
+        }
 
-      const versionJson = (await axios.get(entry.url)).data;
-
-      if (versionJson.javaVersion && versionJson.javaVersion.majorVersion) {
-          return versionJson.javaVersion.majorVersion;
-      }
-
-      const releaseTime = new Date(entry.releaseTime);
-      return detectJavaByDate(releaseTime);
-  }
-
-  // Minecraftバージョンから要求Javaバージョンを取得するIPCハンドラ
-  ipcMain.handle('get-required-java-version', async (event, { mcVersion }) => {
-      try {
-          const javaVersion = await getRequiredJavaVersion(mcVersion);
-          return { success: true, javaVersion };
-      } catch (error) {
-          console.error(`Error fetching required Java version for ${mcVersion}:`, error);
-          return { success: false, error: error.message };
-      }
-  });
-
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-
-  // --- Server Properties Annotations ---
-  ipcMain.handle('get-server-properties-annotations', (event) => {
-    return ServerPropertiesAnnotations;
-  });
-
-  // --- Minecraft Version Handling ---
-
-  // Mojangのバージョンマニフェストを取得する関数 (axiosを使用)
-  async function fetchMinecraftVersions() {
-    try {
-      const response = await axios.get('https://launchermeta.mojang.com/mc/game/version_manifest.json');
-      return response.data.versions;
-    } catch (error) {
-      console.error('Failed to fetch Minecraft versions with axios:', error);
-      // エラーを呼び出し元に伝播させる
-      throw new Error(error.response?.data?.error || error.message || 'Unknown error fetching versions');
+        const releaseTime = new Date(entry.releaseTime);
+        return detectJavaByDate(releaseTime);
     }
-  }
 
-  // レンダラからのバージョン取得要求をハンドル
-  ipcMain.on('get-minecraft-versions', async (event) => {
-    try {
-      const versions = await fetchMinecraftVersions();
-      mainWindow.webContents.send('minecraft-versions', { success: true, versions });
-    } catch (error) {
-      console.error('Failed to fetch Minecraft versions:', error);
-      mainWindow.webContents.send('minecraft-versions', { success: false, error: error.toString() });
+    // Minecraftバージョンから要求Javaバージョンを取得するIPCハンドラ
+    ipcMain.handle('get-required-java-version', async (event, { mcVersion }) => {
+        try {
+            const javaVersion = await getRequiredJavaVersion(mcVersion);
+            return { success: true, javaVersion };
+        } catch (error) {
+            console.error(`Error fetching required Java version for ${mcVersion}:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+
+    app.on('activate', function () {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+
+    // --- Server Properties Annotations ---
+    ipcMain.handle('get-server-properties-annotations', (event) => {
+        return ServerPropertiesAnnotations;
+    });
+
+    // --- Minecraft Version Handling ---
+
+    // Mojangのバージョンマニフェストを取得する関数 (axiosを使用)
+    async function fetchMinecraftVersions() {
+        try {
+            const response = await axios.get('https://launchermeta.mojang.com/mc/game/version_manifest.json');
+            return response.data.versions;
+        } catch (error) {
+            console.error('Failed to fetch Minecraft versions with axios:', error);
+            // エラーを呼び出し元に伝播させる
+            throw new Error(error.response?.data?.error || error.message || 'Unknown error fetching versions');
+        }
     }
-  });
+
+    // レンダラからのバージョン取得要求をハンドル
+    ipcMain.on('get-minecraft-versions', async (event) => {
+        try {
+            const versions = await fetchMinecraftVersions();
+            mainWindow.webContents.send('minecraft-versions', { success: true, versions });
+        } catch (error) {
+            console.error('Failed to fetch Minecraft versions:', error);
+            mainWindow.webContents.send('minecraft-versions', { success: false, error: error.toString() });
+        }
+    });
+
+    // Forge Version Handling
+    ipcMain.handle('get-forge-versions', async (event) => {
+        try {
+            const response = await axios.get('https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json');
+            return { success: true, promotions: response.data.promos };
+        } catch (error) {
+            console.error('Failed to fetch Forge versions:', error);
+            return { success: false, error: error.message };
+        }
+    });
 });
 
 app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit();
+    if (process.platform !== 'darwin') app.quit();
 });
