@@ -177,7 +177,7 @@ const renderServerList = () => {
         if (isBeingDeleted) {
             serverNameHTML = `<div class="font-bold text-lg text-gray-500 dark:text-gray-400 truncate">削除中...</div>`;
         } else {
-            serverNameHTML = `<div contenteditable="true" data-field="name" class="font-bold text-lg text-gray-900 dark:text-white truncate editable" placeholder="サーバー名を入力">${server.server_name}</div>`;
+            serverNameHTML = `<div class="font-bold text-lg text-gray-900 dark:text-white truncate">${server.server_name}</div>`;
         }
 
         serverElement.innerHTML = `
@@ -414,25 +414,61 @@ const renderServerDetail = () => {
 
     serverDetailView.innerHTML = `
         <!-- ヘッダー -->
-        <div>
-            <button id="back-to-list-btn" class="text-primary hover:text-indigo-700 dark:hover:text-indigo-300 mb-4 inline-flex items-center gap-2">
+        <div class="flex flex-col gap-4">
+            <button id="back-to-list-btn" class="text-primary hover:text-indigo-700 dark:hover:text-indigo-300 mb-2 inline-flex items-center gap-2 self-start">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                 サーバー一覧に戻る
             </button>
             
+            <!-- 上段: サーバー名と操作ボタン -->
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="flex-grow min-w-0">
-                    <div contenteditable="true" data-field="name" class="text-3xl font-bold editable truncate" placeholder="サーバー名を入力">${server.server_name}</div>
-                    <div class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">
-                        ホスト: <span class="font-medium text-gray-700 dark:text-gray-300">${host ? host.config.alias : '未割り当て'}</span> (${host ? host.config.ip : 'N/A'})
-                    </div>
+                    <div contenteditable="true" data-field="server_name" class="text-3xl font-bold editable truncate outline-none border border-transparent hover:border-gray-300 dark:hover:border-gray-600 rounded px-1 -ml-1 transition-colors" placeholder="サーバー名を入力">${server.server_name}</div>
                 </div>
 
-                <div class="flex items-center gap-2 w-full sm:w-auto">
+                <div class="flex items-center gap-2 w-full sm:w-auto flex-shrink-0">
                     <button data-action="open-dir" class="w-1/2 sm:w-auto bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex-grow" ${isBeingDeleted ? 'disabled' : ''}>フォルダ</button>
                     <button data-action="toggle-status" class="w-1/2 sm:w-auto font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 flex-grow ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}" ${isBeingDeleted || server.status === 'starting' || server.status === 'stopping' ? 'disabled' : ''}>
                         ${server.status === 'running' ? '停止' : (server.status === 'starting' ? '起動中...' : (server.status === 'stopping' ? '停止中...' : '起動'))}
                     </button>
+                </div>
+            </div>
+
+            <!-- 下段: ホスト情報とメモ -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full">
+                <div class="text-sm text-gray-500 dark:text-gray-400 truncate flex-shrink-0">
+                    ホスト: <span class="font-medium text-gray-700 dark:text-gray-300">${host ? host.config.alias : '未割り当て'}</span> (${host ? host.config.ip : 'N/A'})
+                </div>
+
+                <!-- メモ UI コンポーネント -->
+                <div id="memo-dropdown-container" class="relative flex-grow min-w-0 flex justify-end sm:justify-start">
+                    
+                    <!-- 1. 格納状態のプレビュー & トグルボタン -->
+                    <div class="flex items-center gap-2 w-full max-w-md bg-gray-100 dark:bg-gray-900/50 rounded-md px-3 py-1 border border-gray-200 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        
+                        <p id="memo-preview" class="text-sm ${previewMemo === 'メモなし' ? 'text-gray-500 italic' : 'text-gray-700 dark:text-gray-300'} truncate cursor-pointer select-none flex-grow" title="${memo}">
+                            ${previewMemo}
+                        </p>
+                        
+                        <button data-action="toggle-memo-dropdown" id="memo-toggle-btn" class="flex-shrink-0 p-1 rounded-md text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-transform duration-200">
+                            <svg class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                    </div>
+
+                    <!-- 2. 展開状態のコンテナ (編集エリア) -->
+                    <div id="memo-dropdown-content" class="hidden absolute top-full mt-2 left-0 w-full sm:w-[30rem] z-20 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600"
+                         style="min-height: 10rem; max-height: 50vh; overflow-y: auto;">
+                        <div class="p-4 h-full flex flex-col">
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="text-gray-500 dark:text-gray-400 text-sm font-semibold">メモ</h3>
+                                <span class="text-xs text-gray-400 dark:text-gray-500">閉じると保存されます</span>
+                            </div>
+                            <!-- 編集エリア -->
+                            <div id="memo-editor" contenteditable="true" class="flex-1 text-gray-800 dark:text-gray-300 whitespace-pre-wrap outline-none min-h-[8rem] p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-300 dark:border-gray-700 focus:border-primary custom-scrollbar"
+                                placeholder="メモを入力...">${memo}</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -472,7 +508,7 @@ const renderServerDetail = () => {
                 </nav>
             </div>
             <div class="flex-1">
-                <div id="detail-main-area" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" style="height: calc(100vh - 335px);">
+                <div id="detail-main-area" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" style="height: calc(100vh - 375px);">
                     <!-- 内容は updateDetailViewContent で動的に挿入 -->
                 </div>
             </div>

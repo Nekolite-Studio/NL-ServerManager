@@ -30,10 +30,16 @@ const metricsIntervals = new Map();
  * @returns {object}
  */
 function getDefaultServerConfig(serverId, serverName, runtimeConfig = {}) {
+    // 日付フォーマット: YY-MM-DD_hh:mm:ss
+    const now = new Date();
+    const formattedDate = now.toISOString().replace(/T/, '_').replace(/\..+/, '').slice(2);
+
     const defaultConfig = {
         schema_version: SCHEMA_VERSION,
         server_id: serverId,
-        server_name: serverName || `My Server (${serverId.substring(0, 8)})`,
+        // デフォルト名: New Server {version} {UUIDの最初}
+        // serverName引数が渡された場合はそれを使用するが、通常はnullで渡される想定
+        server_name: serverName || `New Server ${runtimeConfig.versionId || ''} ${serverId.substring(0, 8)}`.trim().replace(/\s+/g, ' '),
         runtime: {
             java_path: null,
             java_version: null,
@@ -44,6 +50,7 @@ function getDefaultServerConfig(serverId, serverName, runtimeConfig = {}) {
         status: ServerStatus.STOPPED,
         logs: [],
         auto_start: false,
+        memo: formattedDate, // デフォルトメモ: 作成日時
     };
     return defaultConfig;
 }
@@ -437,7 +444,9 @@ async function createServer(serversDirectory, serverConfig, onProgress = () => {
         throw error;
     }
 
-    const finalConfig = getDefaultServerConfig(id, restConfig.server_name, runtime);
+    // runtimeにversionIdを含めてgetDefaultServerConfigに渡すことで、デフォルト名にバージョンを含める
+    const runtimeWithVersion = { ...runtime, versionId };
+    const finalConfig = getDefaultServerConfig(id, restConfig.server_name, runtimeWithVersion);
 
     // java_versionが存在すれば、保存前に必ず文字列に変換する
     if (finalConfig.runtime && finalConfig.runtime.java_version != null) {

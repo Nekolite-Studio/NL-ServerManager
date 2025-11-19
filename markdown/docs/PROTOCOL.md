@@ -57,7 +57,7 @@
 | `Message.START_METRICS_STREAM` | 指定されたターゲット（ゲーム/物理サーバー）のメトリクスストリーミングを開始する。 | `{ "streamId": string, "targetType": "gameServer" \| "physicalServer", "targetId": string }` | `Message.GAME_SERVER_METRICS_UPDATE`, `Message.PHYSICAL_SERVER_METRICS_UPDATE` |
 | `Message.STOP_METRICS_STREAM` | 指定されたメトリクスストリーミングを停止する。 | `{ "streamId": string, "targetType": "gameServer" \| "physicalServer", "targetId": string }` | なし |
 | `Message.CREATE_SERVER` | 新規Minecraftサーバーの作成を要求する。 | `{ "versionId": string, "serverName"?: string, "runtime"?: object }` | `Message.PROGRESS_UPDATE`, `Message.OPERATION_RESULT` |
-| `Message.UPDATE_SERVER` | 既存サーバーの設定（名前、起動構成など）を更新する。 | `{ "serverId": string, "config": object }` | `Message.OPERATION_RESULT` |
+| `Message.UPDATE_SERVER` | 既存サーバーの設定（名前、メモ、起動構成など）を更新する。 | `{ "serverId": string, "config": object }`<br>`config`には`server_name`, `memo`, `runtime`など、`nl-server_manager.json`内の更新したいキーと値が含まれる。 | `Message.OPERATION_RESULT` |
 | `Message.UPDATE_SERVER_PROPERTIES` | 既存サーバーの`server.properties`の内容を更新する。 | `{ "serverId": string, "properties": object }` | `Message.OPERATION_RESULT` |
 | `Message.DELETE_SERVER` | 既存サーバーを削除する。 | `{ "serverId": string }` | `Message.OPERATION_RESULT` |
 | `Message.CONTROL_SERVER` | サーバーの起動または停止を要求する。 | `{ "serverId": string, "action": "start" \| "stop" }` | `Message.OPERATION_RESULT`, `Message.SERVER_UPDATE`, `Message.REQUIRE_EULA_AGREEMENT` |

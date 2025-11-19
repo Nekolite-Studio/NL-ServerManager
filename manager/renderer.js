@@ -253,7 +253,16 @@ document.addEventListener('DOMContentLoaded', () => {
              updateView();
         } else if (operation === 'update-server' || operation === 'update-server-properties') {
                     if (success) {
-                        showNotification('設定を保存しました。', 'success');
+                        // サーバー名変更の場合は、具体的なメッセージを表示
+                        if (payload.config && payload.config.server_name) {
+                            showNotification(`サーバー名を「${payload.config.server_name}」に変更しました。`, 'success');
+                        } else if (payload.config && payload.config.memo !== undefined) {
+                            // メモの更新は頻繁に行われる可能性があるため、通知は控えめにするか、または出さない
+                            // showNotification('メモを保存しました。', 'success');
+                        } else {
+                            showNotification('設定を保存しました。', 'success');
+                        }
+
                         // stateのサーバー情報を更新
                         if (state.agentServers.has(agentId)) {
                            const server = state.agentServers.get(agentId).find(s => s.server_id === payload.serverId);
@@ -334,6 +343,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('app').addEventListener('click', (e) => {
         const target = e.target;
 
+        // メモ機能: ドロップダウン外クリックの判定
+        const memoContent = document.getElementById('memo-dropdown-content');
+        if (memoContent && !memoContent.classList.contains('hidden')) {
+            // メモが開いている状態で、メモコンテナ外がクリックされたら閉じる
+            if (!target.closest('#memo-dropdown-container')) {
+                toggleMemo(state.selectedServerId);
+            }
+        }
+
         // ヘルプポップアップ以外がクリックされたら、開いているポップアップを閉じる
         if (!target.closest('[data-action="show-help"]')) {
             document.querySelectorAll('[id^="help-popup-"]:not(.hidden)').forEach(p => p.classList.add('hidden'));
@@ -409,6 +427,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.electronAPI.proxyToAgent(state.selectedPhysicalServerId, { type: 'get-system-info' });
                 }
                 renderPhysicalServerDetail(); // タブスタイルとコンテンツを再描画
+            }
+            return;
+        }
+
+        // メモ機能: トグルボタンまたはプレビュークリック
+        if (target.closest('[data-action="toggle-memo-dropdown"]') || target.closest('#memo-preview')) {
+            if (state.selectedServerId) {
+                toggleMemo(state.selectedServerId);
             }
             return;
         }
@@ -782,13 +808,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const value = e.target.innerText;
             const serverId = state.selectedServerId || e.target.closest('[data-server-id]')?.dataset.serverId;
             
-            if (serverId && field && (field === 'server_name' || field === 'memo')) {
+            // メモは専用の保存ロジック(toggle-memo-dropdown)で処理するためここでは除外
+            if (serverId && field && field === 'server_name') {
                  const server = getters.allServers().find(s => s.server_id === serverId);
-                 if (server && server[field] !== value) {
-                    window.electronAPI.proxyToAgent(server.hostId, {
-                        type: 'update-server',
-                        payload: { serverId, config: { [field]: value } }
-                    });
+                 if (server) {
+                     if (server[field] !== value) {
+                        console.log(`[Renderer] Updating server name for ${serverId} to "${value}"`);
+                        window.electronAPI.proxyToAgent(server.hostId, {
+                            type: 'update-server',
+                            payload: { serverId, config: { [field]: value } }
+                        });
+                     }
+                 } else {
+                     console.error(`[Renderer] Server not found for id: ${serverId}`);
                  }
             }
         }
@@ -879,4 +911,57 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateMetricsUI() {
     // この関数はストリーミングモデルでは不要になったため、中身を空にするか、
     // ポーリング方式のUI更新専用として残す。今回は空にする。
+}
+
+// メモ機能のトグル処理
+function toggleMemo(serverId) {
+    const container = document.getElementById('memo-dropdown-container');
+    const content = document.getElementById('memo-dropdown-content');
+    const editor = document.getElementById('memo-editor');
+    const icon = document.getElementById('memo-toggle-btn')?.querySelector('svg');
+    const preview = document.getElementById('memo-preview');
+
+    if (!container || !content || !editor) return;
+
+    const isOpening = content.classList.contains('hidden');
+
+    if (isOpening) {
+        // 開く
+        content.classList.remove('hidden');
+        if (icon) icon.classList.add('rotate-180');
+        editor.focus();
+    } else {
+        // 閉じる
+        content.classList.add('hidden');
+        if (icon) icon.classList.remove('rotate-180');
+
+        // 保存処理
+        const server = getters.allServers().find(s => s.server_id === serverId);
+        const newMemo = editor.innerText;
+        
+        if (server && server.memo !== newMemo) {
+            console.log(`[Memo] Saving memo for server ${serverId}`);
+            
+            // 楽観的更新 (UI)
+            server.memo = newMemo;
+            const lines = newMemo.split('\n');
+            const firstLine = lines[0] || '';
+            if (firstLine) {
+                preview.innerText = firstLine;
+                preview.classList.remove('text-gray-500', 'italic');
+                preview.classList.add('text-gray-700', 'dark:text-gray-300');
+            } else {
+                preview.innerText = 'メモなし';
+                preview.classList.add('text-gray-500', 'italic');
+                preview.classList.remove('text-gray-700', 'dark:text-gray-300');
+            }
+            preview.title = newMemo;
+
+            // リクエスト送信
+            window.electronAPI.proxyToAgent(server.hostId, {
+                type: 'update-server',
+                payload: { serverId, config: { memo: newMemo } }
+            });
+        }
+    }
 }

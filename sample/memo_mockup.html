@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memo Mockup v2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { 'primary': '#4f46e5' }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* メモドロップダウンボタンの回転 */
+        .rotate-180 { transform: rotate(180deg); }
+        /* スクロールバー */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        [contenteditable="true"]:empty:before {
+            content: attr(placeholder);
+            color: #9ca3af;
+            pointer-events: none;
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 p-10 flex justify-center">
+
+    <!-- ヘッダー部分のシミュレーション -->
+    <div class="w-full max-w-4xl bg-gray-800 p-6 rounded-lg border border-gray-700 flex flex-col gap-4">
+        
+        <button class="text-primary hover:text-indigo-400 mb-2 inline-flex items-center gap-2 self-start">
+            &larr; サーバー一覧に戻る
+        </button>
+
+        <!-- 上段: サーバー名と操作ボタン -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div class="flex-grow min-w-0">
+                <div contenteditable="true" class="text-3xl font-bold truncate outline-none border border-transparent hover:border-gray-600 rounded px-1 -ml-1 transition-colors" placeholder="サーバー名を入力">My Minecraft Server</div>
+            </div>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto flex-shrink-0">
+                <button class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-bold transition-colors">フォルダ</button>
+                <button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold transition-colors">起動</button>
+            </div>
+        </div>
+
+        <!-- 下段: ホスト情報とメモ -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full">
+            <div class="text-sm text-gray-400 truncate flex-shrink-0">
+                ホスト: <span class="font-medium text-gray-300">Gaming PC</span> (192.168.1.10)
+            </div>
+
+            <!-- ▼▼▼ メモ UI コンポーネント (レスポンシブ対応) ▼▼▼ -->
+            <!-- flex-grow で残りの幅を埋める。min-w-0 で縮小可能にする -->
+            <div id="memo-dropdown-container" class="relative flex-grow min-w-0 flex justify-end sm:justify-start">
+                
+                <!-- 1. 格納状態のプレビュー & トグルボタン -->
+                <!-- w-full にして、プレビューテキストが利用可能な幅を使えるようにする -->
+                <div class="flex items-center gap-2 w-full max-w-md bg-gray-900/50 rounded-md px-3 py-1 border border-gray-700/50 hover:border-gray-600 transition-colors">
+                    <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    
+                    <p id="memo-preview" class="text-sm text-gray-400 truncate cursor-pointer select-none flex-grow" title="クリックで編集">
+                        メモなし
+                    </p>
+                    
+                    <button data-action="toggle-memo-dropdown" id="memo-toggle-btn" class="flex-shrink-0 p-1 rounded-md text-gray-500 hover:bg-gray-700 transition-transform duration-200">
+                        <svg class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                </div>
+
+                <!-- 2. 展開状態のコンテナ (編集エリア) -->
+                <!-- absolute配置。スマホなど画面幅が狭い場合は幅を調整 -->
+                <div id="memo-dropdown-content" class="hidden absolute top-full mt-2 left-0 w-full sm:w-[30rem] z-20 bg-gray-800 rounded-lg shadow-xl border border-gray-600"
+                     style="min-height: 10rem; max-height: 50vh; overflow-y: auto;">
+                    <div class="p-4 h-full flex flex-col">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-gray-400 text-sm font-semibold">メモ</h3>
+                            <span class="text-xs text-gray-500">閉じると保存されます</span>
+                        </div>
+                        <!-- 編集エリア -->
+                        <div id="memo-editor" contenteditable="true" class="flex-1 text-gray-300 whitespace-pre-wrap outline-none min-h-[8rem] p-2 bg-gray-900 rounded border border-gray-700 focus:border-primary custom-scrollbar" 
+                            placeholder="メモを入力..."></div>
+                    </div>
+                </div>
+            </div>
+            <!-- ▲▲▲ メモ UI コンポーネント ▲▲▲ -->
+
+        </div>
+    </div>
+
+    <script>
+        // 状態管理
+        let currentMemo = "";
+
+        const container = document.getElementById('memo-dropdown-container');
+        const toggleBtn = document.getElementById('memo-toggle-btn');
+        const content = document.getElementById('memo-dropdown-content');
+        const editor = document.getElementById('memo-editor');
+        const preview = document.getElementById('memo-preview');
+        const icon = toggleBtn.querySelector('svg');
+
+        // 初期化
+        editor.innerText = currentMemo;
+        updatePreview();
+
+        // トグルボタンクリック時の処理
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleMemo();
+        });
+
+        // プレビュークリックでも開く
+        preview.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (content.classList.contains('hidden')) {
+                toggleMemo();
+            }
+        });
+
+        // ドロップダウン外クリックで閉じる
+        document.addEventListener('click', (e) => {
+            if (!content.classList.contains('hidden') && !container.contains(e.target)) {
+                toggleMemo(); // 閉じる動作
+            }
+        });
+
+        // ドロップダウン内部クリックは伝播させない
+        content.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        function toggleMemo() {
+            const isOpening = content.classList.contains('hidden');
+
+            if (isOpening) {
+                // 開く: UI表示
+                content.classList.remove('hidden');
+                icon.classList.add('rotate-180');
+                editor.focus();
+            } else {
+                // 閉じる: 保存処理 & UI非表示
+                const newMemo = editor.innerText;
+                
+                if (newMemo !== currentMemo) {
+                    console.log(`[保存] メモを更新しました:\n${newMemo}`);
+                    // ここで update-server を送信する
+                    currentMemo = newMemo;
+                    updatePreview();
+                    
+                    // 通知シミュレーション
+                    console.log("UI通知: 保存完了");
+                }
+
+                content.classList.add('hidden');
+                icon.classList.remove('rotate-180');
+            }
+        }
+
+        function updatePreview() {
+            const lines = currentMemo.split('\n');
+            const firstLine = lines[0] || '';
+            if (firstLine) {
+                preview.innerText = firstLine;
+                preview.classList.remove('text-gray-500', 'italic');
+                preview.classList.add('text-gray-300');
+            } else {
+                preview.innerText = 'メモなし';
+                preview.classList.add('text-gray-500', 'italic');
+                preview.classList.remove('text-gray-300');
+            }
+            preview.title = currentMemo; // ツールチップに全文表示
+        }
+    </script>
+</body>
+</html>

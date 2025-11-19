@@ -214,3 +214,35 @@ sequenceDiagram
 2.  **Main → Agent (WebSocket):** メインプロセスは要求に `requestId` を付与し、`Agent` に `Message.UPDATE_SERVER_PROPERTIES` メッセージを送信します。
 3.  **Agentでの処理:** `Agent` は受信したプロパティで `server.properties` ファイルと `nl-server_manager.json` の両方をアトミックに更新します。
 4.  **Agent → Main → UI (レスポンス):** `Agent` は処理結果を `Message.OPERATION_RESULT` で返します。成功した場合、UIは状態を更新し、ユーザーに成功通知を表示します。
+
+### フロー7: サーバー設定の更新（名前、メモ）
+
+ユーザーがUI上でサーバー名やメモをインラインで編集した際のフローです。`focusout`やメモ編集エリアを閉じるなどのイベントをトリガーとします。
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Renderer as レンダラー (UI)
+    participant Main as Manager (メイン)
+    participant Agent
+
+    User->>Renderer: サーバー名またはメモを編集
+    User->>Renderer: フォーカスを外す or メモを閉じる (イベント発火)
+    Renderer->>Renderer: 変更前の値と現在の値を比較
+    
+    alt 変更がある場合
+        Renderer->>Main: IPC: proxyToAgent(agentId, {type: Message.UPDATE_SERVER, serverId, config: {server_name: "新しい名前"}})
+        Main->>Agent: WebSocket: {type: Message.UPDATE_SERVER, requestId, payload: {serverId, config: {...}}}
+        Agent->>Agent: nl-server_manager.json を更新
+        Agent-->>Main: WebSocket: {type: Message.OPERATION_RESULT, requestId, success: true, payload: {serverId, config: {...}}}
+        Main-->>Renderer: IPC: 'operation-result'
+        Renderer->>Renderer: stateを更新
+        Renderer->>User: 「保存しました」通知を表示
+    end
+```
+
+1.  **ユーザー操作:** ユーザーがサーバー名やメモを編集し、フォーカスを外すなどの保存トリガーとなる操作を行います。
+2.  **変更検知:** `renderer.js` はイベントを検知し、メモリ上の`state`と現在のUIの値を比較して、実際の内容変更があったかを確認します。
+3.  **UI → Main → Agent (リクエスト):** 変更があった場合のみ、レンダラーは `proxyToAgent` を通じて `Message.UPDATE_SERVER` メッセージの送信を要求します。`payload`の`config`オブジェクトには、`{ server_name: "新しい名前" }` や `{ memo: "新しいメモ" }` のように、変更があったフィールドのみが含まれます。
+4.  **Agentでの処理:** `Agent` は受信した`config`オブジェクトを既存の設定にマージし、`nl-server_manager.json` ファイルを更新して変更を永続化します。
+5.  **Agent → Main → UI (レスポンス):** `Agent` は処理結果（更新後の`config`を含む）を `Message.OPERATION_RESULT` で返します。UIはこれを受けて`state`を最新の状態に保ち、ユーザーに成功通知を表示します。
