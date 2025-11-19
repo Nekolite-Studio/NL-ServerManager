@@ -472,7 +472,7 @@ const renderServerDetail = () => {
                 </nav>
             </div>
             <div class="flex-1">
-                <div id="detail-main-area" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" style="height: calc(100vh - 400px);">
+                <div id="detail-main-area" class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700" style="height: calc(100vh - 335px);">
                     <!-- 内容は updateDetailViewContent で動的に挿入 -->
                 </div>
             </div>
