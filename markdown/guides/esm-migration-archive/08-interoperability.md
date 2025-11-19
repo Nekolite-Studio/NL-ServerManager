@@ -52,6 +52,42 @@ console.log(sayHello()); // -> 'Hello'
 **ベストプラクティス:**
 ESMからCJSモジュールをインポートする際は、まず**デフォルトインポート**を試し、その結果（オブジェクト）から必要なプロパティを取り出すのが最も確実です。
 
+### 実践的な例
+
+今回の移行作業では、いくつかの典型的なパターンに遭遇しました。
+
+-   **`tar`ライブラリ (デフォルトエクスポートなし):**
+    `tar` は `module.exports` に複数の関数を持つオブジェクトを代入しています。しかし、ESMの `default` としては認識されません。このような場合は、名前空間インポート (`* as ...`) を使用します。
+    ```javascript
+    // NG: import tar from 'tar'; -> エラーになる
+    // OK:
+    import * as tar from 'tar';
+    
+    // 使用例
+    stream.pipe(tar.x({ cwd: destDir, strip: 1 }));
+    ```
+
+-   **`ws`ライブラリ (名前付きエクスポートあり):**
+    `ws` は `WebSocketServer` などのクラスを名前付きでエクスポートしています。これは通常の名前付きインポートで対応できます。
+    ```javascript
+    // NG: import WebSocket from 'ws'; new WebSocket.Server() -> エラーになる
+    // OK:
+    import { WebSocketServer } from 'ws';
+    
+    // 使用例
+    const wss = new WebSocketServer({ port: PORT });
+    ```
+
+-   **`electron-store`ライブラリ (デフォルトエクスポートあり):**
+    このライブラリは `module.exports = Store;` のような形式で、クラスを直接エクスポートしています。これはESMのデフォルトインポートで正しく解釈できます。
+    ```javascript
+    import Store from 'electron-store';
+    
+    const store = new Store();
+    ```
+
+このように、ライブラリによってCJSのエクスポート方法は様々です。エラーが発生した場合は、まず `import * as ...` で中身をすべてインポートして `console.log` で確認し、どのような構造になっているかを把握するのが有効なデバッグ手法です。
+
 ## 8.2. CJSからESMをインポートする (非推奨だが、必要な場合も)
 
 **原則として、CJSからESMを `require()` することはできません。**

@@ -1,6 +1,6 @@
 # プロジェクト管理ガイド: npm Workspaces を利用したビルド・起動・更新
 
-このドキュメントでは、`manager` (Electron GUI) と `agent` (Node.js CLI) の2つのアプリケーションを npm Workspaces を利用して管理する方法について説明します。
+このドキュメントでは、`manager` (Electron GUI)、`agent` (Node.js CLI)、および`common` (共有モジュール) の3つのパッケージを npm Workspaces を利用して管理する方法について説明します。
 
 ## 1. プロジェクト構造
 
@@ -8,6 +8,7 @@
 
 -   `manager/`: Minecraftサーバー管理用のElectronベースのGUIアプリケーション。
 -   `agent/`: 各物理サーバー上で動作し、`manager`からの指示を受けたり、サーバー情報を提供するNode.jsベースのエージェント。
+-   `common/`: `manager`と`agent`間で共有されるプロトコル定義やスキーマなどのモジュール。
 
 ルートディレクトリの `package.json` がこれらのワークスペースを管理しています。
 
@@ -21,7 +22,10 @@
 │   └── main.js
 │   └── index.html
 │   └── preload.js
-├── guide/
+├── common/
+│   └── package.json
+│   └── protocol.js
+├── markdown/guides/
 │   └── npm_control.md (このファイル)
 └── package.json (ルートのpackage.json)
 ```
@@ -82,6 +86,25 @@ npm run dev
 
 開発時のビルド時間を短縮するため、デフォルトの `build` コマンドはLinux向けのみを生成するように設定されています。
 
+*   **プリロードスクリプトのバンドル:** `manager`の`dev`スクリプトでは、`esbuild`を使用して`preload.js`をバンドルするステップが含まれています。これはElectronの`contextIsolation`が有効な環境でESM形式の`preload.js`を正しく動作させるために必要です。
+    ```json
+    // manager/package.json の一部
+    "scripts": {
+      "dev": "concurrently \"npm:watch:preload\" \"electron . --no-sandbox ...\"",
+      "build:preload": "esbuild preload.js --bundle --platform=node --external:electron --outfile=dist/preload.js",
+      "watch:preload": "npm-watch build:preload",
+      "build": "npm run build:preload && electron-builder --linux"
+    },
+    "build": {
+      "files": [
+        "main.js",
+        "index.html",
+        "dist/preload.js" // バンドルされたpreload.jsを含める
+      ],
+      // ...
+    }
+    ```
+
 *   **Linux向けビルド (開発用):**
     ```bash
     npm run build -w manager
@@ -139,7 +162,8 @@ npm update -w manager
       "workspaces": [
         "manager",
         "agent",
-        "packages/my-new-app" // ここに追加
+        "common", // ここに追加
+        "packages/my-new-app" 
       ],
       // ...
     }
@@ -151,6 +175,6 @@ npm update -w manager
 `manager/package.json` には以下のスクリプトが定義されています。
 
 *   `"start": "npm run build && electron ."`: このコマンドは、まずアプリケーションをビルドし、その後ビルドされたElectronアプリケーションを実行します。これは、最終的なパッケージング前のテストや、ビルド済みアプリの実行を想定しています。
-*   `"dev": "electron ."`: このコマンドは、ビルドステップをスキップし、直接Electronを開発モードで起動します。通常、ホットリロードなどの開発ツールと組み合わせて使用され、開発中の高速なイテレーションに適しています。
+*   `"dev": "concurrently \"npm:watch:preload\" \"electron . --no-sandbox ..."`: このコマンドは、開発中に`preload.js`の変更を監視しつつ、Electronを開発モードで起動します。ホットリロードなどの開発ツールと組み合わせて使用され、開発中の高速なイテレーションに適しています。
 
 開発中は `npm run dev:manager` を使用し、ビルド後の動作確認や配布前の最終チェックには `npm run start -w manager` を使用するのが一般的です。

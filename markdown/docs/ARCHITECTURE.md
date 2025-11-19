@@ -15,8 +15,8 @@ graph TD
         direction LR
         subgraph Renderer Process (UI)
             direction TB
-            renderer_logic[Logic (renderer.js)] -- Updates --> renderer_state[State (renderer-state.js)]
-            renderer_state -- Provides data --> renderer_ui[UI (renderer-ui.js)]
+            renderer_state[State (renderer-state.js)] -- Provides data --> renderer_ui[UI (renderer-ui.js)]
+            renderer_logic[Logic (renderer.js)] -- Updates --> renderer_state
             renderer_ui -- Renders --> DOM
             DOM -- User Interaction --> renderer_logic
         end
@@ -61,27 +61,28 @@ graph TD
 -   **アプリケーションライフサイクル:** ウィンドウの作成、終了などの管理。
 -   **Agent通信:** 全ての`agent`とのWebSocket接続を確立・維持・再接続する。
 -   **IPCハブ:** Rendererプロセスからの要求を安全に受け取り、`agent`へ中継（プロキシ）する。
--   **設定の永続化:** `electron-store`を利用して、登録済みAgentリストやウィンドウサイズをディスクに保存する。
--   **外部API連携:** Mojang（バージョン情報）やAdoptium（Javaダウンロード情報）などの外部APIとの通信を担当する。
+-   **設定の永続化:** `electron-store`を利用して、登録済みAgentリストやウィンドウサイズをディスクに保存する。**スキーマ検証を伴う堅牢な設定管理**を行い、設定破損時にはユーザーに通知し、バックアップと復旧オプションを提供する。
+-   **外部API連携:** Mojang（バージョン情報）やAdoptium（Javaダウンロード情報）などの外部APIとの通信を担当する。**HTTPクライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。
 
 #### Rendererプロセス (UI)
--   **メトリクス要求:** サーバー詳細画面の表示状態に応じて、`agent`にメトリクスストリーミングの開始/停止を要求する。
+-   **責務分離:** `renderer-state.js` (状態管理)、`renderer-ui.js` (UI描画)、`renderer.js` (イベントロジック) の3つのモジュールに責務が明確に分離されている。
 -   **`renderer-state.js` (状態):** アプリケーションのUI状態（表示中のビュー、選択中のサーバー、リアルタイムメトリクスなど）を一元管理する。純粋なデータオブジェクト。
 -   **`renderer-ui.js` (描画):** `state`オブジェクトのデータに基づき、HTML (DOM) を構築・更新する責務を担う。特にサーバープロパティ画面では、`@nl-server-manager/common`パッケージの`property-schema.js`から提供されるメタデータを基に、**標準のDOM APIを用いて安全に入力フォームを構築**する。HTML文字列の組み立ては行わない。
 -   **`renderer.js` (ロジック):** ユーザー操作（クリックなど）とMainプロセスからの非同期メッセージ（サーバーリスト更新など）を受け取るイベント駆動の中心。受け取ったイベントに応じて`state`を更新し、`ui`に再描画を指示する。また、サーバーの状態変化（例: 起動完了）を検知し、必要に応じて動的にメトリクス収集を開始するなど、より動的なUI制御も担当する。
 
 ### 2.2. Agent
 
--   **`index.js` (通信ハブ):** `manager`からのWebSocket接続を待ち受け、受信したメッセージを解釈し、`serverManager`に処理を委譲する司令塔。
+-   **`index.js` (通信ハブ):** `manager`からのWebSocket接続を待ち受け、受信したメッセージを解釈し、`serverManager`に処理を委譲する司令塔。**ESM (ECMAScript Modules) 形式で記述**されており、[`common/protocol.js`](common/protocol.js:1)で定義された定数を用いてメッセージタイプを厳密に管理する。
 -   **`serverManager.js` (コアロジック):** Minecraftサーバーのライフサイクル管理に関する全ての物理的な操作を担当する。
-    -   **状態の整合性維持:** Agent起動時に実行中のJavaプロセスをスキャンし、実際のプロセス存在状況に基づいてメモリ上のサーバーステータスを（`running`または`stopped`に）復元する。
+    -   **状態の整合性維持:** Agent起動時に実行中のJavaプロセスを`systeminformation`ライブラリを用いてスキャンし、実際のプロセス存在状況に基づいてメモリ上のサーバーステータスを（`running`または`stopped`に）復元する。
     -   **プロセス管理:** `child_process.spawn`により、Minecraftサーバーを**Agentの子プロセスとして**起動・停止する。これにより、Agent終了時にサーバープロセスも確実に終了する。
-    -   **ファイル操作:** サーバーファイルの作成、読み取り、削除、および`eula.txt`の同意状態のチェックと更新。
+    -   **ファイル操作:** サーバーファイルの作成、読み取り、削除、および`eula.txt`の同意状態のチェックと更新。**EULA未同意時にはManagerに通知し、同意を促すインタラクティブなフローをサポートする。**
     -   **ログ収集:** 実行中プロセスの標準出力/エラー出力を監視し、ログを収集する。
     -   **メトリクス収集:**
         -   **ゲームサーバー:** RCON経由でサーバーに接続し、TPSやプレイヤー数を取得する。
         -   **物理サーバー:** `systeminformation`ライブラリを利用し、ホストマシンのCPU、RAM、Disk使用率をリアルタイムで収集する。
--   **`settingsManager.js` (設定管理):** `agent`自体の設定（APIポート、サーバーディレクトリなど）を管理する。
+    -   **Javaパス解決:** `java_path`または`java_version`に基づいて、インストールされたJava実行ファイルを正確に特定するロジックを実装。
+-   **`settingsManager.js` (設定管理):** `agent`自体の設定（APIポート、サーバーディレクトリなど）を管理する。ファイルが存在しない場合はデフォルト値で自動生成される。
 
 ## 3. データフローの原則
 
@@ -98,7 +99,7 @@ graph TD
 
 ### 3.2. Manager-Agent間の非同期通信フロー
 
-`manager`と`agent`間の通信は、同期的には行われません。常に非同期であり、以下の2つの主要パターンで構成されます。
+`manager`と`agent`間の通信は、同期的には行われません。常に非同期であり、以下の2つの主要パターンで構成されます。**メッセージは[`common/protocol.js`](common/protocol.js:1)で定義された定数を使用し、`type`フィールドで識別される。**
 
 -   **リクエスト/レスポンスパターン:**
     -   `manager`が操作（例: サーバー作成）を要求すると、一意な`requestId`を付与して`agent`に送信する。

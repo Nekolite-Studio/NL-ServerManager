@@ -1,4 +1,4 @@
-# 🧭 **Minecraft Java — Java バージョン自動判定（完全版）**
+# 🧭 **Minecraft Java — Java バージョン自動判定**
 
 ## 🎯 要件まとめ
 
@@ -20,7 +20,7 @@
 https://piston-meta.mojang.com/mc/game/version_manifest_v2.json
 ```
 または
-`./sample/compact_mojang_version_manifest.json`
+[`./sample/compact_mojang_version_manifest.json`](sample/compact_mojang_version_manifest.json)
 
 構造例（重要部分）：
 
@@ -108,43 +108,59 @@ releaseTime >= 2024-04-23 → Java 21
 
 ## ✔ 完全版（Java 情報がある場合は利用し、無い場合は releaseTime で判定）
 
+`manager`のメインプロセス（[`manager/main.js`](manager/main.js:1)）で実装されている`getRequiredJavaVersion`関数は、以下のロジックで動作します。この関数は、`ipcMain.handle`を通じてレンダラープロセスから呼び出されます。
+
 ```js
-const MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+import axios from 'axios'; // axiosをインポート
 
+const MANIFEST_URL_V2 = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+
+/**
+ * リリース日時に基づいてJavaバージョンを判定するフォールバック関数
+ * @param {Date} date
+ * @returns {number}
+ */
+function detectJavaByDate(date) {
+    if (date < new Date("2021-06-08T00:00:00Z")) return 8;   // 1.16.5まで
+    if (date < new Date("2021-11-30T00:00:00Z")) return 16;  // 1.17.x
+    if (date < new Date("2024-04-23T00:00:00Z")) return 17;  // 1.18〜1.20.4
+    return 21;                                               // 1.20.5+
+}
+
+/**
+ * 指定されたMinecraftバージョンに必要なJavaのメジャーバージョンを取得する
+ * @param {string} mcVersion
+ * @returns {Promise<number>}
+ */
 async function getRequiredJavaVersion(mcVersion) {
-    const manifest = await (await fetch(MANIFEST_URL)).json();
-
+    const manifest = (await axios.get(MANIFEST_URL_V2)).data;
     const entry = manifest.versions.find(v => v.id === mcVersion);
-    if (!entry) throw new Error(`Version not found: ${mcVersion}`);
+    if (!entry) throw new Error(`Version not found in manifest: ${mcVersion}`);
 
-    // 詳細 version.json を取得
-    const versionJson = await (await fetch(entry.url)).json();
+    const versionJson = (await axios.get(entry.url)).data;
 
-    // 1. 明記されている場合は公式の値を返す（最優先）
     if (versionJson.javaVersion && versionJson.javaVersion.majorVersion) {
         return versionJson.javaVersion.majorVersion;
     }
 
-    // 2. フォールバック：releaseTime で判定
     const releaseTime = new Date(entry.releaseTime);
-
     return detectJavaByDate(releaseTime);
 }
 
-// releaseTime による判定ルール
-function detectJavaByDate(date) {
-    if (date < new Date("2021-06-08T00:00:00Z")) return 8;   // 1.16.5まで
-    if (date < new Date("2021-11-30T00:00:00Z")) return 16;  // 1.17.x
-    if (date < new Date("2024-04-23T00:00:00Z")) return 17;  // 1.18〜1.20.4（通常使われない）
-    return 21;                                               // 1.20.5+     （通常使われない）
-}
-
-// ------ 使用例 ------
+// ------ 使用例 (レンダラープロセスからの呼び出し) ------
+// レンダラープロセスでは、preload.js を介して以下のように呼び出す
+/*
 (async () => {
-    console.log(await getRequiredJavaVersion("1.21.10")); // → 21（jsonに記載あり）
-    console.log(await getRequiredJavaVersion("1.16.5"));  // → 8  （フォールバック）
-    console.log(await getRequiredJavaVersion("24w33a"));  // → 21（jsonに記載あり）
+    const javaVer1 = await window.electronAPI.getRequiredJavaVersion({ mcVersion: "1.21.10" });
+    console.log(javaVer1); // → 21（jsonに記載あり）
+
+    const javaVer2 = await window.electronAPI.getRequiredJavaVersion({ mcVersion: "1.16.5" });
+    console.log(javaVer2);  // → 8  （フォールバック）
+
+    const javaVer3 = await window.electronAPI.getRequiredJavaVersion({ mcVersion: "24w33a" });
+    console.log(javaVer3);  // → 21（jsonに記載あり）
 })();
+*/
 ```
 
 ---

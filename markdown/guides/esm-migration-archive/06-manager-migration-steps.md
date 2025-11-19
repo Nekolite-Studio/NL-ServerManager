@@ -149,6 +149,84 @@ import Store from 'electron-store';
 const store = new Store();
 ```
 
+### 4.4. Preloadスクリプトのバンドル (重要)
+
+`"type": "module"` を設定しても、`preload.js` はそのままではESMとして正しく読み込まれないという問題に直面しました。
+
+#### 根本原因
+
+Electronのセキュリティ機能である `contextIsolation: true` (デフォルト) が有効な環境では、`preload` スクリプトはNode.jsのモジュール解決から隔離された特殊な「隔離コンテキスト」で実行されます。このコンテキストは `package.json` の `"type": "module"` 設定を継承しないため、`preload.js` はCJSとして扱われ、`import`構文でエラーが発生します。
+
+#### 解決策: バンドラの導入
+
+この問題を解決する最も堅牢な方法は、`esbuild` のようなバンドラを導入し、`preload.js` を事前にCJS形式の単一ファイルに変換することです。
+
+**1. 開発依存関係の追加:**
+`manager` パッケージに `esbuild` と `npm-watch` を追加します。
+
+```bash
+npm install -D esbuild npm-watch --workspace=manager
+```
+
+**2. `package.json` のスクリプトを更新:**
+`manager/package.json` を編集し、`preload` スクリプトのビルドと監視を行うスクリプトを追加します。
+
+```json
+// manager/package.json
+{
+  // ...
+  "scripts": {
+    "start": "npm run build && electron .",
+    "dev": "concurrently \"npm:watch:preload\" \"electron . --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-software-rasterizer\"",
+    "build:preload": "esbuild preload.js --bundle --platform=node --external:electron --outfile=dist/preload.js",
+    "watch:preload": "npm-watch build:preload",
+    "build": "npm run build:preload && electron-builder --linux"
+  },
+  "watch": {
+    "build:preload": {
+      "patterns": [ "preload.js" ],
+      "extensions": "js",
+      "quiet": false
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^39.1.2",
+    "electron-builder": "^26.1.0",
+    "esbuild": "^0.23.0",
+    "npm-watch": "^0.13.0",
+    // ...
+  },
+  "build": {
+    // ...
+    "files": [
+      "main.js",
+      "index.html",
+      "dist/preload.js" // ビルド対象をバンドル後のファイルに変更
+    ],
+    // ...
+  }
+}
+```
+**注意:** `dev` スクリプトで `concurrently` を使うため、`manager` にも追加しています。
+
+**3. `main.js` の参照パスを更新:**
+`main.js` が読み込む `preload` スクリプトのパスを、バンドル後の出力先 `dist/preload.js` に変更します。
+
+```javascript
+// manager/main.js
+// ...
+const win = new BrowserWindow({
+    // ...
+    webPreferences: {
+      preload: path.join(__dirname, 'dist/preload.js') // 参照先を変更
+    }
+});
+// ...
+```
+
+この設定により、`npm run dev` を実行すると `preload.js` が変更されるたびに自動でバンドルされ、Electronはそれをエラーなく読み込めるようになります。
+
 ## ステップ 5: フォーマット、リンティング、動作確認
 
 1.  **フォーマット:** `prettier` を実行してコードスタイルを整えます。
@@ -157,10 +235,10 @@ const store = new Store();
     ```
 2.  **起動確認:** `dev` スクリプトでアプリケーションを起動し、エラーが出ないか確認します。
     ```bash
-    npm run dev:manager
+    npm run dev
     ```
-    -   **DevToolsの確認:** レンダラープロセスのDevToolsコンソールを開き、`Failed to load module script:` のようなエラーが出ていないか確認します。これは `index.html` の `<script type="module">` のパスが間違っている場合などによく発生します。
-    -   **メインプロセスのログ確認:** ターミナルに表示されるメインプロセスのログを確認し、`ERR_MODULE_NOT_FOUND` などが出ていないか確認します。
+    -   **DevToolsの確認:** `preload` スクリプトが正常に読み込まれ、`window.electronAPI` が定義されていることを確認します。
+    -   **メインプロセスのログ確認:** ターミナルに表示される `esbuild` のログと、Electronのログにエラーがないことを確認します。
 3.  **機能テスト:**
     -   `agent` との接続が確立されるか。
     -   サーバーリストが正しく表示されるか。
