@@ -146,3 +146,4 @@ vite.config.ts.timestamp-*
 package-lock.json
 ## Build output
 /manager/dist
+.venv/
