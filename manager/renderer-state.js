@@ -1,7 +1,7 @@
 // manager/renderer-state.js
 
 // アプリケーションのUI状態を一元管理するオブジェクト
-const state = {
+export const state = {
     // 現在のメインビュー (list | detail | physical | physical-detail)
     currentView: 'list',
     
@@ -31,7 +31,7 @@ const state = {
 };
 
 // 派生状態（Derived State）を計算するゲッター
-const getters = {
+export const getters = {
     // すべてのAgentからサーバーリストをフラットな配列として取得
     allServers: () => {
         return Array.from(state.agentServers.values()).flat();
@@ -48,3 +48,7 @@ const getters = {
         return state.physicalServers.get(state.selectedPhysicalServerId);
     }
 };
+
+// グローバルに公開 (ESMからのアクセス用)
+window.state = state;
+window.getters = getters;

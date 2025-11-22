@@ -28,6 +28,7 @@ export const Message = Object.freeze({
     OPERATION_RESULT: 'operation-result',               // 要求された操作の最終結果 (成功/失敗)
     PROGRESS_UPDATE: 'progress-update',                 // 時間のかかる操作の進捗更新
     NOTIFY_WARN: 'notify-warn',                         // UIに警告を通知する
+    OPERATION_WARNING: 'operation-warning',             // 操作に伴う警告（成功したが注意が必要な場合など）
     REQUIRE_EULA_AGREEMENT: 'require-eula-agreement',   // EULAへの同意が必要であることを通知
 
     // IPC (for reference, not for direct WebSocket use)

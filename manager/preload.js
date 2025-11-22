@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { Message } from '@nl-server-manager/common/protocol.js';
 
 contextBridge.exposeInMainWorld('electronAPI', {
+    Message,
   // Renderer to Main (Invoke/Send)
   rendererReady: () => ipcRenderer.send('renderer-ready'),
   getMinecraftVersions: () => ipcRenderer.send('get-minecraft-versions'),
@@ -31,5 +33,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onProgressUpdate: (callback) => ipcRenderer.on('progress-update', (event, ...args) => callback(...args)),
   onOperationResult: (callback) => ipcRenderer.on('operation-result', (event, ...args) => callback(...args)),
   onNotifyWarn: (callback) => ipcRenderer.on('notify-warn', (event, ...args) => callback(...args)),
+  onOperationWarning: (callback) => ipcRenderer.on('operation-warning', (event, ...args) => callback(...args)),
   onRequireEulaAgreement: (callback) => ipcRenderer.on('require-eula-agreement', (event, ...args) => callback(...args)),
 });

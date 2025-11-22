@@ -22,9 +22,11 @@ graph TD
         end
         subgraph Main Process (main.js)
             direction TB
-            ipc[IPC Hub]
-            ws_client[WebSocket Client]
-            store[Settings (electron-store)]
+            ipc[IPC Handlers (mainHandlers.js)]
+            agent_mgr[Agent Manager (agentManager.js)]
+            ext_api[External API (externalApiService.js)]
+            store[Settings (storeManager.js)]
+            prop_anno[Property Annotations (propertyAnnotations.js)]
         end
     end
 
@@ -41,15 +43,17 @@ graph TD
 
     %% Interactions
     renderer_logic -- IPC via Preload --> ipc
-    ipc -- Proxies request --> ws_client
-    ws_client -- WebSocket --> ws_server
+    ipc -- Calls --> agent_mgr
+    ipc -- Calls --> ext_api
+    ipc -- Calls --> prop_anno
+    agent_mgr -- WebSocket --> ws_server
     ws_server -- Delegates task --> server_manager
     server_manager -- Spawns/Manages --> mc_process
     
     mc_process -- stdout/stderr --> server_manager
     server_manager -- Pushes update --> ws_server
-    ws_server -- Pushes update --> ws_client
-    ws_client -- Pushes update --> ipc
+    ws_server -- Pushes update --> agent_mgr
+    agent_mgr -- Pushes update --> ipc
     ipc -- Pushes update --> renderer_logic
 ```
 
@@ -59,16 +63,20 @@ graph TD
 
 #### Mainプロセス (`main.js`)
 -   **アプリケーションライフサイクル:** ウィンドウの作成、終了などの管理。
--   **Agent通信:** 全ての`agent`とのWebSocket接続を確立・維持・再接続する。
--   **IPCハブ:** Rendererプロセスからの要求を安全に受け取り、`agent`へ中継（プロキシ）する。
--   **設定の永続化:** `electron-store`を利用して、登録済みAgentリストやウィンドウサイズをディスクに保存する。**スキーマ検証を伴う堅牢な設定管理**を行い、設定破損時にはユーザーに通知し、バックアップと復旧オプションを提供する。
--   **外部API連携:** Mojang（バージョン情報）やAdoptium（Javaダウンロード情報）などの外部APIとの通信を担当する。**HTTPクライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。
+-   **`src/services/agentManager.js`:** 全ての`agent`とのWebSocket接続を確立・維持・再接続する。Agentリストの管理と永続化も担当する。
+-   **`src/ipc/mainHandlers.js`:** RendererプロセスからのIPC要求を受け取り、適切なサービス（AgentManagerやExternalApiService）に処理を委譲する。
+-   **`src/storeManager.js`:** `electron-store`を利用して、登録済みAgentリストやウィンドウサイズをディスクに保存する。**スキーマ検証を伴う堅牢な設定管理**を行い、設定破損時にはユーザーに通知し、バックアップと復旧オプションを提供する。
+-   **`src/services/externalApiService.js`:** Mojang（バージョン情報）やAdoptium（Javaダウンロード情報）などの外部APIとの通信を担当する。**HTTPクライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。
+-   **`src/services/propertyAnnotations.js`:** `server.properties` のUI表示用メタデータ（説明文、グループ分け、入力タイプなど）を提供する。`@nl-server-manager/common` のZodスキーマから動的に生成される。
 
 #### Rendererプロセス (UI)
--   **責務分離:** `renderer-state.js` (状態管理)、`renderer-ui.js` (UI描画)、`renderer.js` (イベントロジック) の3つのモジュールに責務が明確に分離されている。
+-   **責務分離:** `renderer-state.js` (状態管理)、`renderer-ui.js` (UI描画)、`renderer.js` (エントリーポイント) に加え、機能ごとにモジュール化が進められている。
 -   **`renderer-state.js` (状態):** アプリケーションのUI状態（表示中のビュー、選択中のサーバー、リアルタイムメトリクスなど）を一元管理する。純粋なデータオブジェクト。
--   **`renderer-ui.js` (描画):** `state`オブジェクトのデータに基づき、HTML (DOM) を構築・更新する責務を担う。特にサーバープロパティ画面では、`@nl-server-manager/common`パッケージの`property-schema.js`から提供されるメタデータを基に、**標準のDOM APIを用いて安全に入力フォームを構築**する。HTML文字列の組み立ては行わない。
--   **`renderer.js` (ロジック):** ユーザー操作（クリックなど）とMainプロセスからの非同期メッセージ（サーバーリスト更新など）を受け取るイベント駆動の中心。受け取ったイベントに応じて`state`を更新し、`ui`に再描画を指示する。また、サーバーの状態変化（例: 起動完了）を検知し、必要に応じて動的にメトリクス収集を開始するなど、より動的なUI制御も担当する。
+-   **`renderer-ui.js` (描画):** `state`オブジェクトのデータに基づき、HTML (DOM) を構築・更新する責務を担う。特にサーバープロパティ画面では、Mainプロセス経由で取得したメタデータを基に、**標準のDOM APIを用いて安全に入力フォームを構築**する。HTML文字列の組み立ては行わない。
+-   **`renderer.js` (エントリーポイント):** アプリケーションの初期化、IPCリスナーの設定、DOMイベントリスナーの設定を行うエントリーポイント。
+-   **`src/ipc/rendererListeners.js`:** MainプロセスからのIPCイベントを受信し、状態更新やUI描画をトリガーするリスナー群。
+-   **`src/dom/eventHandlers.js`:** ユーザー操作（クリックなど）に対するDOMイベントハンドラ群。
+-   **`src/services/metricsService.js`:** メトリクスストリームの開始・停止などのロジックを担当するサービス。
 
 ### 2.2. Agent
 

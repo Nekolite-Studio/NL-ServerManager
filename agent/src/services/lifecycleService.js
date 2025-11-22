@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { Rcon } from 'rcon-client';
 import fs from 'fs';
 import path from 'path';
-import { ServerStatus } from '@nl-server-manager/common/protocol.js';
+import { ServerStatus, Message } from '@nl-server-manager/common/protocol.js';
 import { getServer, findForgeArgsFile } from './serverConfigService.js';
 import { resolveJavaExecutable } from './javaService.js';
 
@@ -108,7 +108,24 @@ export async function startServer(serversDirectory, serverId, ws, onUpdate = () 
     try {
         javaExecutable = resolveJavaExecutable(serverConfig.runtime);
     } catch (error) {
-        throw error;
+        // 指定されたJavaが見つからない場合、システムデフォルトへのフォールバックを試みる
+        if (serverConfig.runtime.java_version) {
+            console.warn(`[ServerManager] Requested Java version ${serverConfig.runtime.java_version} not found. Falling back to system default.`);
+            javaExecutable = 'java';
+            
+            // Managerに警告を通知
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: Message.OPERATION_WARNING,
+                    payload: {
+                        serverId: serverId,
+                        message: `指定されたJavaバージョン (${serverConfig.runtime.java_version}) が見つかりません。システムのデフォルトJavaを使用して起動を試みます。`
+                    }
+                }));
+            }
+        } else {
+            throw error;
+        }
     }
 
     // JVM引数を動的に構築
@@ -165,7 +182,7 @@ export async function startServer(serversDirectory, serverId, ws, onUpdate = () 
         });
 
         // 親プロセスが終了しても子プロセスが生き残るようにする
-        // process.unref(); // Agent終了時にサーバーも追従して終了させるためコメントアウト
+        // Agent終了時にサーバーも追従して終了させるため、unref()は呼び出さない
 
         runningProcesses.set(serverId, process);
 
