@@ -246,3 +246,73 @@ sequenceDiagram
 3.  **UI → Main → Agent (リクエスト):** 変更があった場合のみ、レンダラーは `proxyToAgent` を通じて `Message.UPDATE_SERVER` メッセージの送信を要求します。`payload`の`config`オブジェクトには、`{ server_name: "新しい名前" }` や `{ memo: "新しいメモ" }` のように、変更があったフィールドのみが含まれます。
 4.  **Agentでの処理:** `Agent` は受信した`config`オブジェクトを既存の設定にマージし、`nl-server_manager.json` ファイルを更新して変更を永続化します。
 5.  **Agent → Main → UI (レスポンス):** `Agent` は処理結果（更新後の`config`を含む）を `Message.OPERATION_RESULT` で返します。UIはこれを受けて`state`を最新の状態に保ち、ユーザーに成功通知を表示します。
+
+### フロー8: エージェントの登録
+
+ユーザーがUIから新しいエージェントを登録する際のフローです。このフローはAgentとの通信を伴わず、Manager内部で完結します。
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Renderer as レンダラー (UI)
+    participant Preload as Preload.js
+    participant Main as Manager (メイン)
+
+    User->>Renderer: 「エージェント登録」をクリック
+    Renderer->>Renderer: 登録モーダルを表示
+    User->>Renderer: エージェント情報を入力し、「登録」をクリック
+    Renderer->>Preload: addAgent({ name, ip, port })
+    Preload->>Main: IPC 'add-agent'
+    Main->>Main: 新しいAgentのIDを生成
+    Main->>Main: storeManagerで設定ファイルに保存
+    Main->>Main: agentManagerで接続を開始
+    Main-->>Preload: IPC 'add-agent' の応答 (Promise解決)
+    Preload-->>Renderer: addAgentのPromiseが解決
+    Renderer->>Renderer: UIを更新 (通知表示、モーダルを閉じる)
+    Main->>Preload: IPC 'agent-list' (agentManagerがブロードキャスト)
+    Preload->>Renderer: onAgentListコールバック実行
+    Renderer->>Renderer: 物理サーバーリストを再描画
+```
+
+1.  **UI → Main (IPC):** レンダラープロセスは、ユーザーが入力した設定情報（エイリアス、IP、ポート）を[`preload.js`](manager/preload.js:1)経由で`add-agent`チャネルに送信します。
+2.  **Mainプロセスでの処理:**
+    *   `mainHandlers.js` はリクエストを受け取ります。
+    *   `uuidv4`で新しいAgentの一意なIDを生成します。
+    *   `storeManager.js` を呼び出し、新しいAgent情報を`config.json`に永続化します。
+    *   `agentManager.js` を呼び出し、新しいAgentへのWebSocket接続シーケンスを開始します。
+3.  **Main → UI (IPC):** `agentManager`はAgentリストの変更を検知し、`agent-list`チャネルを通じて更新されたリストをUIにブロードキャストします。
+4.  **UI更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。
+
+### フロー9: エージェントの削除
+
+ユーザーがUIから既存のエージェントを削除する際のフローです。
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Renderer as レンダラー (UI)
+    participant Preload as Preload.js
+    participant Main as Manager (メイン)
+
+    User->>Renderer: 「このエージェントを削除」をクリック
+    Renderer->>Renderer: 確認モーダルを表示
+    User->>Renderer: 「削除」を承認
+    Renderer->>Preload: deleteAgent(agentId)
+    Preload->>Main: IPC 'delete-agent'
+    Main->>Main: agentManagerで接続を終了
+    Main->>Main: storeManagerで設定ファイルから削除
+    Main-->>Preload: IPC 'delete-agent' の応答 (Promise解決)
+    Preload-->>Renderer: deleteAgentのPromiseが解決
+    Renderer->>Renderer: UIを更新 (一覧画面に戻る)
+    Main->>Preload: IPC 'agent-list' (agentManagerがブロードキャスト)
+    Preload->>Renderer: onAgentListコールバック実行
+    Renderer->>Renderer: 物理サーバーリストを再描画
+```
+
+1.  **UI → Main (IPC):** レンダラープロセスは、削除対象の`agentId`を[`preload.js`](manager/preload.js:1)経由で`delete-agent`チャネルに送信します。
+2.  **Mainプロセスでの処理:**
+    *   `mainHandlers.js` はリクエストを受け取ります。
+    *   `agentManager.js` を呼び出し、対象AgentのWebSocket接続を終了させ、管理マップから削除します。
+    *   `storeManager.js` を呼び出し、`config.json`から対象Agentの情報を削除して永続化します。
+3.  **Main → UI (IPC):** `agentManager`はAgentリストの変更を検知し、`agent-list`チャネルを通じて更新されたリストをUIにブロードキャストします。
+4.  **UI更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。

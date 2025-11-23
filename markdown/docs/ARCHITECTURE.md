@@ -63,7 +63,7 @@ graph TD
 
 #### Mainプロセス (`main.js`)
 -   **アプリケーションライフサイクル:** ウィンドウの作成、終了などの管理。
--   **`src/services/agentManager.js`:** 全ての`agent`とのWebSocket接続を確立・維持・再接続する。Agentリストの管理と永続化も担当する。
+-   **`src/services/agentManager.js`:** 全ての`agent`とのWebSocket接続を確立・維持・再接続する。UIからの要求に応じてAgentの動的な追加・削除を行い、Agentリストの管理と永続化も担当する。
 -   **`src/ipc/mainHandlers.js`:** RendererプロセスからのIPC要求を受け取り、適切なサービス（AgentManagerやExternalApiService）に処理を委譲する。
 -   **`src/storeManager.js`:** `electron-store`を利用して、登録済みAgentリストやウィンドウサイズをディスクに保存する。**スキーマ検証を伴う堅牢な設定管理**を行い、設定破損時にはユーザーに通知し、バックアップと復旧オプションを提供する。
 -   **`src/services/externalApiService.js`:** Mojang（バージョン情報）やAdoptium（Javaダウンロード情報）などの外部APIとの通信を担当する。**HTTPクライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。
