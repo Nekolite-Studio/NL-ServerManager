@@ -92,6 +92,8 @@
     "schema_version": "1.0.0",
     "server_id": "f5g6h7i8-...",
     "server_name": "My Creative Server",
+    "server_type": "vanilla",
+    "loader_version": null,
     "runtime": {
         "java_path": null,
         "java_version": "17",
@@ -113,14 +115,20 @@
 -   **`schema_version` (string):** 設定ファイルのスキーマバージョン。
 -   **`server_id` (string):** サーバーの一意な識別子。ディレクトリ名と一致します。
 -   **`server_name` (string):** `manager`のUI上に表示されるサーバー名。
+-   **`server_type` (string):** サーバーの種類。`vanilla`, `forge`, `fabric`, `quilt`, `neoforge` のいずれか。
+-   **`loader_version` (string | null):** Modローダーのバージョン（Modサーバーの場合）。
 -   **`runtime` (Object):** サーバーの実行環境を定義します。
     -   **`java_path` (string | null):** Java実行ファイルの絶対パス。`'default'`または`null`の場合、`java_version`に基づいて自動検出されるか、システムのデフォルト`java`が使用されます。
     -   **`java_version` (string | null):** このサーバーが使用すべきJavaのメジャーバージョン。`manager`のUIからインストールしたJavaのバージョンがここに設定されます。**Agent側では常に文字列として扱われます。**
     -   **`min_memory` (number | null):** サーバーの最小メモリ割り当て（MB）。
     -   **`max_memory` (number | null):** サーバーの最大メモリ割り当て（MB）。
-    -   **`custom_args` (string | null):** サーバー起動時に追加で渡される、スペース区切りのカスタムJVM引数。
-    -   **`server_jar` (string):** 起動するサーバーJARファイルの名前。
--   **`status` (string):** サーバーの現在の状態。`stopped`, `starting`, `running`, `stopping` のいずれか。**注意:** この値はディスクに保存されますが、Agent起動時には[`serverManager.js`](agent/src/serverManager.js:1)が実際のプロセス存在状況をスキャンし、メモリ上のステータスを上書きします。そのため、ディスク上のこの値はAgentの起動直後には信頼されません。
+    - **`custom_args` (string | null):** サーバー起動時に追加で渡される、スペース区切りのカスタムJVM引数。
+    - **`server_jar` (string):** 起動するサーバーJARファイルの名前。
+        - Vanilla: `server.jar`
+        - Fabric: `fabric-server-launch.jar`
+        - Quilt: `quilt-server-launch.jar`
+        - Forge/NeoForge: `server.jar` (ただし、実際の起動には `unix_args.txt` 等が使用されるため、この値は参照されない場合がある)
+- **`status` (string):** サーバーの現在の状態。`stopped`, `starting`, `running`, `stopping` のいずれか。**注意:** この値はディスクに保存されますが、Agent起動時には[`serverManager.js`](agent/src/serverManager.js:1)が実際のプロセス存在状況をスキャンし、メモリ上のステータスを上書きします。そのため、ディスク上のこの値はAgentの起動直後には信頼されません。
 -   **`logs` (Array<string>):** サーバーの過去のログエントリ（限定的な履歴）。
 -   **`auto_start` (boolean):** `agent`起動時にこのサーバーを自動で起動するかどうか。（将来的な機能）
 -   **`properties` (Object):** `server.properties`のミラー。`agent`はこのオブジェクトを信頼できる情報源として`server.properties`ファイルに書き込みます。このオブジェクトのスキーマは[`@nl-server-manager/common/property-schema.js`](common/property-schema.js:1)で定義されており、`manager`は`UPDATE_SERVER_PROPERTIES`メッセージを通じてこのファイルを編集できます。

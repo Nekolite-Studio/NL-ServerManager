@@ -3,7 +3,7 @@ import { Rcon } from 'rcon-client';
 import fs from 'fs';
 import path from 'path';
 import { ServerStatus, Message } from '@nl-server-manager/common/protocol.js';
-import { getServer, findForgeArgsFile } from './serverConfigService.js';
+import { getServer, findArgsFile } from './serverConfigService.js';
 import { resolveJavaExecutable } from './javaService.js';
 
 // 実行中のサーバープロセスを管理する
@@ -77,7 +77,16 @@ export async function startServer(serversDirectory, serverId, ws, onUpdate = () 
         return true;
     }
 
-    const serverDir = path.join(serversDirectory, serverId);
+    let serverDir = path.join(serversDirectory, serverId);
+
+    // Quiltの場合、serverディレクトリが存在すればそこを作業ディレクトリとする
+    if (serverConfig.server_type === 'quilt') {
+        const quiltServerDir = path.join(serverDir, 'server');
+        if (fs.existsSync(quiltServerDir)) {
+            console.log(`[ServerManager] Quilt server directory detected. Switching CWD to: ${quiltServerDir}`);
+            serverDir = quiltServerDir;
+        }
+    }
 
     // EULAチェック
     const eulaPath = path.join(serverDir, 'eula.txt');
@@ -143,16 +152,15 @@ export async function startServer(serversDirectory, serverId, ws, onUpdate = () 
 
     const args = [...final_jvm_args];
 
-    if (serverConfig.server_type === 'forge') {
-        // Forge Startup Logic
-        const argsFile = findForgeArgsFile(serverDir);
+    if (serverConfig.server_type === 'forge' || serverConfig.server_type === 'neoforge') {
+        // Forge/NeoForge Startup Logic
+        const argsFile = findArgsFile(serverDir);
         if (argsFile) {
-            console.log(`[ServerManager] Found Forge args file: ${argsFile}`);
-            // unix_args.txtのパスは絶対パスで指定する必要があるかもしれないが、
-            // @libraries/... という形式は相対パスを期待している可能性がある。
+            console.log(`[ServerManager] Found args file: ${argsFile}`);
+            // unix_args.txtのパスは相対パスで指定する
             // 通常、java @user_jvm_args.txt @libraries/.../unix_args.txt "$@"
+            
             // user_jvm_args.txt が存在すればそれも使う
-
             if (fs.existsSync(path.join(serverDir, 'user_jvm_args.txt'))) {
                 args.push(`@user_jvm_args.txt`);
             }
@@ -163,11 +171,12 @@ export async function startServer(serversDirectory, serverId, ws, onUpdate = () 
 
             args.push('nogui');
         } else {
-            console.warn('[ServerManager] Forge args file not found. Falling back to server.jar (Legacy Forge?)');
+            console.warn(`[ServerManager] ${serverConfig.server_type} args file not found. Falling back to server.jar (Legacy?)`);
             args.push('-jar', server_jar, 'nogui');
         }
     } else {
-        // Vanilla Startup Logic
+        // Vanilla / Fabric / Quilt Startup Logic
+        // Fabric/Quiltは serverConfigService.js で正しい server_jar が設定されているはず
         args.push('-jar', server_jar, 'nogui');
     }
 

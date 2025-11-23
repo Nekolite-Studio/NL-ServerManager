@@ -371,10 +371,21 @@ export function setupDomListeners() {
     const serverNameInput = document.getElementById('server-name');
 
     let cachedForgePromotions = null;
+    let cachedFabricVersions = null;
+    let cachedQuiltVersions = null;
 
     async function updateLoaderVersions() {
         const type = document.querySelector('input[name="server-type"]:checked').value;
         const mcVersion = versionSelect.value;
+
+        // ラベルの更新
+        const loaderLabel = document.getElementById('loader-label');
+        if (loaderLabel) {
+            if (type === 'forge') loaderLabel.textContent = 'Forge バージョン';
+            else if (type === 'fabric') loaderLabel.textContent = 'Fabric Loader バージョン';
+            else if (type === 'quilt') loaderLabel.textContent = 'Quilt Loader バージョン';
+            else if (type === 'neoforge') loaderLabel.textContent = 'NeoForge バージョン';
+        }
 
         if (type === 'vanilla') {
             if (loaderContainer) loaderContainer.classList.add('hidden');
@@ -421,6 +432,81 @@ export function setupDomListeners() {
 
                 if (!latest && !recommended) {
                     loaderSelect.innerHTML = '<option value="">利用可能なバージョンがありません</option>';
+                }
+            }
+        } else if (type === 'fabric') {
+            if (!cachedFabricVersions) {
+                const result = await window.electronAPI.getFabricVersions();
+                if (result.success) {
+                    cachedFabricVersions = result.versions;
+                } else {
+                    if (loaderSelect) loaderSelect.innerHTML = '<option>取得失敗</option>';
+                    showNotification(`Fabricバージョンの取得に失敗しました: ${result.error}`, 'error');
+                    return;
+                }
+            }
+
+            if (loaderSelect) {
+                loaderSelect.innerHTML = '';
+                // FabricはLoaderバージョンのみを表示 (Game Versionはインストーラー実行時に指定)
+                // 安定版のみを表示するなどのフィルタリングも可能だが、ここでは全て表示
+                cachedFabricVersions.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.version;
+                    opt.textContent = v.stable ? `${v.version} (Stable)` : v.version;
+                    loaderSelect.appendChild(opt);
+                });
+
+                if (cachedFabricVersions.length === 0) {
+                    loaderSelect.innerHTML = '<option value="">利用可能なバージョンがありません</option>';
+                }
+            }
+        } else if (type === 'quilt') {
+            if (!cachedQuiltVersions) {
+                const result = await window.electronAPI.getQuiltVersions();
+                if (result.success) {
+                    cachedQuiltVersions = result.versions;
+                } else {
+                    if (loaderSelect) loaderSelect.innerHTML = '<option>取得失敗</option>';
+                    showNotification(`Quiltバージョンの取得に失敗しました: ${result.error}`, 'error');
+                    return;
+                }
+            }
+
+            if (loaderSelect) {
+                loaderSelect.innerHTML = '';
+                cachedQuiltVersions.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.version;
+                    opt.textContent = v.version;
+                    loaderSelect.appendChild(opt);
+                });
+
+                if (cachedQuiltVersions.length === 0) {
+                    loaderSelect.innerHTML = '<option value="">利用可能なバージョンがありません</option>';
+                }
+            }
+        } else if (type === 'neoforge') {
+            // NeoForgeはMCバージョンに依存するためキャッシュしにくい（またはMCバージョンごとにキャッシュが必要）
+            // ここでは都度取得する
+            const result = await window.electronAPI.getNeoForgeVersions(mcVersion);
+            
+            if (loaderSelect) {
+                loaderSelect.innerHTML = '';
+                if (result.success) {
+                    result.versions.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v;
+                        opt.textContent = v;
+                        loaderSelect.appendChild(opt);
+                    });
+
+                    if (result.versions.length === 0) {
+                        loaderSelect.innerHTML = '<option value="">利用可能なバージョンがありません</option>';
+                    }
+                } else {
+                    loaderSelect.innerHTML = '<option>取得失敗</option>';
+                    showNotification(`NeoForgeバージョンの取得に失敗しました: ${result.error}`, 'error');
                 }
             }
         } else {

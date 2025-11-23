@@ -224,6 +224,11 @@ export function setupIpcListeners() {
             } else {
                 showNotification(`設定の保存に失敗しました: ${error.message}`, 'error');
             }
+        } else if (operation === window.electronAPI.Message.CONTROL_SERVER) {
+            if (!success) {
+                const action = payload?.action === 'start' ? '起動' : '停止';
+                showNotification(`サーバーの${action}に失敗しました: ${error.message}`, 'error', notifId, 10000);
+            }
         }
     });
 

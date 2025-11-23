@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolvePath } from '../utils/storage.js';
+import { getServer } from './serverConfigService.js';
 
 /**
  * eula.txtを更新してEULAに同意する
@@ -9,7 +10,17 @@ import { resolvePath } from '../utils/storage.js';
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function acceptEula(serversDirectory, serverId) {
-    const serverDir = path.join(resolvePath(serversDirectory), serverId);
+    let serverDir = path.join(resolvePath(serversDirectory), serverId);
+    const serverConfig = getServer(serverId);
+
+    // Quiltの場合、serverディレクトリが存在すればそこを作業ディレクトリとする
+    if (serverConfig && serverConfig.server_type === 'quilt') {
+        const quiltServerDir = path.join(serverDir, 'server');
+        if (fs.existsSync(quiltServerDir)) {
+            serverDir = quiltServerDir;
+        }
+    }
+
     const eulaPath = path.join(serverDir, 'eula.txt');
     try {
         let content = '';

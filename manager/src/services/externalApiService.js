@@ -104,9 +104,127 @@ async function getForgeVersions() {
     }
 }
 
+/**
+ * Fabricのバージョン情報を取得する
+ * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
+ */
+async function getFabricVersions() {
+    try {
+        const response = await axios.get('https://meta.fabricmc.net/v2/versions/loader');
+        return { success: true, versions: response.data };
+    } catch (error) {
+        console.error('Failed to fetch Fabric versions:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Quiltのバージョン情報を取得する
+ * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
+ */
+async function getQuiltVersions() {
+    try {
+        const response = await axios.get('https://meta.quiltmc.org/v3/versions/loader');
+        return { success: true, versions: response.data };
+    } catch (error) {
+        console.error('Failed to fetch Quilt versions:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * NeoForgeのバージョン情報を取得する
+ * @param {string} mcVersion Minecraftバージョン
+ * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
+ */
+async function getNeoForgeVersions(mcVersion) {
+    try {
+        const response = await axios.get('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml');
+        const xmlData = response.data;
+
+        // XMLを正規表現でパースしてバージョンリストを抽出
+        const versionRegex = /<version>(.*?)<\/version>/g;
+        const versions = [];
+        let match;
+        while ((match = versionRegex.exec(xmlData)) !== null) {
+            versions.push(match[1]);
+        }
+
+        // フィルタリングロジック
+        // 旧形式 (1.20.1以前): [MC_VER]- で始まるものを抽出
+        // 新形式 (1.20.2以降): [Major].[Minor]. (例: 20.4.) で始まるものを抽出
+        // ※ NeoForgeのバージョニングは複雑なため、簡易的にMCバージョンを含むか、
+        //    あるいは新しいバージョニング規則に合致するかで判断する。
+        
+        // MCバージョンのメジャー・マイナーを取得 (例: 1.20.4 -> 20.4)
+        const mcVerParts = mcVersion.split('.');
+        let neoVerPrefix = '';
+        if (mcVerParts.length >= 2) {
+            // 1.20.4 -> 20.4
+            // 1.21 -> 21.0 (NeoForge 21.0.x)
+            if (mcVerParts[0] === '1') {
+                neoVerPrefix = `${mcVerParts[1]}.`;
+                if (mcVerParts.length === 2) {
+                    // 1.21 -> 21.
+                    // しかしNeoForge 21.0系の場合は 21.0. となる可能性があるため、
+                    // 単純に 21. で始まるものを探すのが安全か。
+                    // ガイドに従い [Major].[Minor]. を基本とするが、
+                    // 1.20.1以前は mcVersion- がプレフィックスとなる。
+                }
+            }
+        }
+
+        const filteredVersions = versions.filter(v => {
+            // 旧形式: 1.20.1-47.1.3 のように MCバージョンで始まる
+            if (v.startsWith(`${mcVersion}-`)) return true;
+
+            // 新形式: 20.4.80 のように MCバージョンに対応した数値で始まる
+            // 1.20.2 -> 20.2.x
+            // 1.20.4 -> 20.4.x
+            // 1.21 -> 21.0.x
+            if (neoVerPrefix && v.startsWith(neoVerPrefix)) return true;
+            
+            // 1.21 の場合、NeoForgeは 21.0.x や 21.1.x になる可能性がある
+            // 1.21 -> 21.
+            if (mcVerParts[0] === '1' && mcVerParts.length >= 2) {
+                 const major = mcVerParts[1]; // 21
+                 // バージョン文字列が "21." で始まるかチェック
+                 if (v.startsWith(`${major}.`)) return true;
+            }
+
+            return false;
+        });
+
+        // 降順にソート (semverライブラリがないので簡易的な文字列比較または数値比較)
+        // NeoForgeのバージョンは数値的に比較可能
+        filteredVersions.sort((a, b) => {
+            // バージョンを数値配列に変換して比較
+            const partsA = a.replace(/[^0-9.]/g, '').split('.').map(Number);
+            const partsB = b.replace(/[^0-9.]/g, '').split('.').map(Number);
+            
+            for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+                const valA = partsA[i] || 0;
+                const valB = partsB[i] || 0;
+                if (valA > valB) return -1;
+                if (valA < valB) return 1;
+            }
+            return 0;
+        });
+
+        return { success: true, versions: filteredVersions };
+
+    } catch (error) {
+        console.error('Failed to fetch NeoForge versions:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 export {
     getRequiredJavaVersion,
     getJavaDownloadInfo,
     fetchMinecraftVersions,
-    getForgeVersions
+    getForgeVersions,
+    getFabricVersions,
+    getQuiltVersions,
+    getNeoForgeVersions
 };

@@ -28,7 +28,7 @@ Fabric、NeoForge、Quilt のバージョン取得ロジックに関する実装
 
 - **インストーラー**: 公式 Maven から JAR をダウンロード。
   - URL: `https://maven.fabricmc.net/net/fabricmc/fabric-installer/[VERSION]/fabric-installer-[VERSION].jar`
-  - 現状は安定版として `1.0.0` を使用（または API から取得）。
+  - 現状は安定版として `1.0.1` を使用。
 - **コマンド**:
   ```bash
   java -jar fabric-installer.jar server -mcversion [MC_VER] -loader [LOADER_VER] -downloadMinecraft
@@ -51,8 +51,12 @@ Fabric、NeoForge、Quilt のバージョン取得ロジックに関する実装
   - 現状は `0.9.1` を使用。
 - **コマンド**:
   ```bash
-  java -jar quilt-installer.jar server [MC_VER] --loader [LOADER_VER] --download-server
+  java -jar quilt-installer.jar install server [MC_VER] [LOADER_VER] --download-server
   ```
+- **注意点**:
+  - Quiltインストーラーは、デフォルトで `server/` というサブディレクトリを作成し、その中にサーバーファイルを配置します。
+  - Agentは起動時にこのディレクトリ構造を検知し、自動的に作業ディレクトリ(CWD)を `server/` に切り替えて起動します。
+  - 起動JARファイル名は `quilt-server-launch.jar` です。
 
 ---
 
@@ -76,6 +80,9 @@ Fabric、NeoForge、Quilt のバージョン取得ロジックに関する実装
   ```bash
   java -jar neoforge-installer.jar --installServer
   ```
+- **起動方法**:
+  - Forgeと同様に、インストール後に生成される `libraries/net/neoforged/neoforge/[VERSION]/unix_args.txt` を使用して起動引数を構築します。
+  - Agentは自動的にこのファイルを探索し、`@user_jvm_args.txt @libraries/.../unix_args.txt` 形式で起動します。
 
 ---
 

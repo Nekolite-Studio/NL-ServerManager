@@ -93,17 +93,124 @@ async function installForgeServer(serverDir, mcVersion, forgeVersion, javaExecut
     onProgress({ status: 'installing', message: 'Forgeサーバーをインストール中 (これには時間がかかります)...', progress: 0 });
     console.log(`[ServerManager] Running Forge Installer...`);
 
+    return runInstaller(serverDir, javaExecutable, 'installer.jar', ['--installServer']);
+}
+
+/**
+ * NeoForgeサーバーをインストールする
+ * @param {string} serverDir
+ * @param {string} neoVersion
+ * @param {string} javaExecutable
+ * @param {function} onProgress
+ */
+async function installNeoForgeServer(serverDir, neoVersion, javaExecutable, onProgress) {
+    const installerUrl = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${neoVersion}/neoforge-${neoVersion}-installer.jar`;
+    const installerPath = path.join(serverDir, 'installer.jar');
+
+    console.log(`[ServerManager] Downloading NeoForge Installer from ${installerUrl}`);
+    onProgress({ status: 'downloading', message: 'NeoForgeインストーラーをダウンロード中...', progress: 0 });
+
+    await downloadFile(installerUrl, installerPath, (p) => {
+        onProgress({ status: 'downloading', message: `NeoForgeインストーラーをダウンロード中... ${p}%`, progress: p });
+    });
+
+    onProgress({ status: 'installing', message: 'NeoForgeサーバーをインストール中 (これには時間がかかります)...', progress: 0 });
+    console.log(`[ServerManager] Running NeoForge Installer...`);
+
+    return runInstaller(serverDir, javaExecutable, 'installer.jar', ['--installServer']);
+}
+
+/**
+ * Fabricサーバーをインストールする
+ * @param {string} serverDir
+ * @param {string} mcVersion
+ * @param {string} loaderVersion
+ * @param {string} javaExecutable
+ * @param {function} onProgress
+ */
+async function installFabricServer(serverDir, mcVersion, loaderVersion, javaExecutable, onProgress) {
+    // 安定版として 1.0.1 を使用 (APIから取得するのが理想だが、ガイドに従い固定または最新を使用)
+    // ガイドでは 1.0.0 とあるが、最新のインストーラーを使用するのが一般的
+    const installerVersion = '1.0.1';
+    const installerUrl = `https://maven.fabricmc.net/net/fabricmc/fabric-installer/${installerVersion}/fabric-installer-${installerVersion}.jar`;
+    const installerPath = path.join(serverDir, 'fabric-installer.jar');
+
+    console.log(`[ServerManager] Downloading Fabric Installer from ${installerUrl}`);
+    onProgress({ status: 'downloading', message: 'Fabricインストーラーをダウンロード中...', progress: 0 });
+
+    await downloadFile(installerUrl, installerPath, (p) => {
+        onProgress({ status: 'downloading', message: `Fabricインストーラーをダウンロード中... ${p}%`, progress: p });
+    });
+
+    onProgress({ status: 'installing', message: 'Fabricサーバーをインストール中...', progress: 0 });
+    console.log(`[ServerManager] Running Fabric Installer...`);
+
+    // java -jar fabric-installer.jar server -mcversion [MC_VER] -loader [LOADER_VER] -downloadMinecraft
+    const args = [
+        'server',
+        '-mcversion', mcVersion,
+        '-loader', loaderVersion,
+        '-downloadMinecraft'
+    ];
+
+    return runInstaller(serverDir, javaExecutable, 'fabric-installer.jar', args);
+}
+
+/**
+ * Quiltサーバーをインストールする
+ * @param {string} serverDir
+ * @param {string} mcVersion
+ * @param {string} loaderVersion
+ * @param {string} javaExecutable
+ * @param {function} onProgress
+ */
+async function installQuiltServer(serverDir, mcVersion, loaderVersion, javaExecutable, onProgress) {
+    // ガイドに従い 0.9.1 を使用
+    const installerVersion = '0.9.1';
+    const installerUrl = `https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/${installerVersion}/quilt-installer-${installerVersion}.jar`;
+    const installerPath = path.join(serverDir, 'quilt-installer.jar');
+
+    console.log(`[ServerManager] Downloading Quilt Installer from ${installerUrl}`);
+    onProgress({ status: 'downloading', message: 'Quiltインストーラーをダウンロード中...', progress: 0 });
+
+    await downloadFile(installerUrl, installerPath, (p) => {
+        onProgress({ status: 'downloading', message: `Quiltインストーラーをダウンロード中... ${p}%`, progress: p });
+    });
+
+    onProgress({ status: 'installing', message: 'Quiltサーバーをインストール中...', progress: 0 });
+    console.log(`[ServerManager] Running Quilt Installer...`);
+
+    // java -jar quilt-installer.jar install server [MC_VER] [LOADER_VER] --download-server
+    // ヘルプメッセージ: quilt-installer install server <minecraft-version> [<loader-version>] [SERVER-INSTALL-OPTIONS]
+    const args = [
+        'install',
+        'server',
+        mcVersion,
+        loaderVersion,
+        '--download-server'
+    ];
+
+    return runInstaller(serverDir, javaExecutable, 'quilt-installer.jar', args);
+}
+
+/**
+ * 汎用インストーラー実行関数
+ * @param {string} serverDir
+ * @param {string} javaExecutable
+ * @param {string} jarName
+ * @param {string[]} args
+ * @returns {Promise<void>}
+ */
+function runInstaller(serverDir, javaExecutable, jarName, args) {
     return new Promise((resolve, reject) => {
-        // インストーラーはメモリを大量に消費する場合があるため、ヒープサイズを増やす
-        // また、IPv4優先、ヘッドレスモード明示、G1GC使用でパフォーマンス改善を図る
         const installerArgs = [
-            '-Xmx4G',
+            '-Xmx2G',
             '-Djava.net.preferIPv4Stack=true',
             '-Djava.awt.headless=true',
             '-XX:+UseG1GC',
             '-jar',
-            'installer.jar',
-            '--installServer'
+            jarName,
+            ...args
         ];
         
         const process = spawn(javaExecutable, installerArgs, {
@@ -113,18 +220,19 @@ async function installForgeServer(serverDir, mcVersion, forgeVersion, javaExecut
 
         process.on('close', (code) => {
             if (code === 0) {
-                console.log('[ServerManager] Forge installation successful.');
+                console.log(`[ServerManager] Installation successful (${jarName}).`);
                 // Cleanup
                 try {
+                    const installerPath = path.join(serverDir, jarName);
                     if (fs.existsSync(installerPath)) fs.unlinkSync(installerPath);
-                    const logFile = path.join(serverDir, 'installer.jar.log');
+                    const logFile = path.join(serverDir, `${jarName}.log`);
                     if (fs.existsSync(logFile)) fs.unlinkSync(logFile);
                 } catch (e) {
                     console.warn('[ServerManager] Failed to cleanup installer files:', e);
                 }
                 resolve();
             } else {
-                reject(new Error(`Forge installation failed with code ${code}`));
+                reject(new Error(`Installation failed with code ${code}`));
             }
         });
 
@@ -133,19 +241,31 @@ async function installForgeServer(serverDir, mcVersion, forgeVersion, javaExecut
 }
 
 /**
- * Forgeの引数ファイルを探す
+ * ForgeまたはNeoForgeの引数ファイルを探す
  * @param {string} serverDir
  * @returns {string|null}
  */
-function findForgeArgsFile(serverDir) {
+function findArgsFile(serverDir) {
+    // Forge
     const forgeDir = path.join(serverDir, 'libraries', 'net', 'minecraftforge', 'forge');
-    if (!fs.existsSync(forgeDir)) return null;
-
-    const versions = fs.readdirSync(forgeDir);
-    for (const ver of versions) {
-        const argsPath = path.join(forgeDir, ver, 'unix_args.txt');
-        if (fs.existsSync(argsPath)) return argsPath;
+    if (fs.existsSync(forgeDir)) {
+        const versions = fs.readdirSync(forgeDir);
+        for (const ver of versions) {
+            const argsPath = path.join(forgeDir, ver, 'unix_args.txt');
+            if (fs.existsSync(argsPath)) return argsPath;
+        }
     }
+
+    // NeoForge
+    const neoForgeDir = path.join(serverDir, 'libraries', 'net', 'neoforged', 'neoforge');
+    if (fs.existsSync(neoForgeDir)) {
+        const versions = fs.readdirSync(neoForgeDir);
+        for (const ver of versions) {
+            const argsPath = path.join(neoForgeDir, ver, 'unix_args.txt');
+            if (fs.existsSync(argsPath)) return argsPath;
+        }
+    }
+
     return null;
 }
 
@@ -237,14 +357,21 @@ export async function createServer(serversDirectory, serverConfig, onProgress = 
     console.log(`[ServerManager] Creating server: ${versionId} (${serverType || 'vanilla'})`);
 
     try {
+        // Javaパスを解決する (Modサーバーのインストールに必要)
+        const javaExecutable = resolveJavaExecutable(runtime);
+
         if (serverType === 'forge') {
             if (!loaderVersion) throw new Error('Forge version (loaderVersion) is required for Forge servers.');
-
-            // Javaパスを解決する
-            // createServer時点では runtime.java_version が渡されているはず
-            const javaExecutable = resolveJavaExecutable(runtime);
-
             await installForgeServer(serverDir, versionId, loaderVersion, javaExecutable, onProgress);
+        } else if (serverType === 'neoforge') {
+            if (!loaderVersion) throw new Error('NeoForge version (loaderVersion) is required for NeoForge servers.');
+            await installNeoForgeServer(serverDir, loaderVersion, javaExecutable, onProgress);
+        } else if (serverType === 'fabric') {
+            if (!loaderVersion) throw new Error('Fabric Loader version is required for Fabric servers.');
+            await installFabricServer(serverDir, versionId, loaderVersion, javaExecutable, onProgress);
+        } else if (serverType === 'quilt') {
+            if (!loaderVersion) throw new Error('Quilt Loader version is required for Quilt servers.');
+            await installQuiltServer(serverDir, versionId, loaderVersion, javaExecutable, onProgress);
         } else {
             // Vanilla (Default)
             console.log(`[ServerManager] versionId specified: ${versionId}. Starting download process.`);
@@ -283,6 +410,13 @@ export async function createServer(serversDirectory, serverConfig, onProgress = 
     // サーバータイプとローダーバージョンを保存
     finalConfig.server_type = serverType || 'vanilla';
     finalConfig.loader_version = loaderVersion || null;
+
+    // サーバータイプに応じてデフォルトのserver_jarを設定
+    if (serverType === 'fabric') {
+        finalConfig.runtime.server_jar = 'fabric-server-launch.jar';
+    } else if (serverType === 'quilt') {
+        finalConfig.runtime.server_jar = 'quilt-server-launch.jar';
+    }
 
     // java_versionが存在すれば、保存前に必ず文字列に変換する
     if (finalConfig.runtime && finalConfig.runtime.java_version != null) {
@@ -375,4 +509,4 @@ export async function deleteServer(serversDirectory, serverId) {
 }
 
 // 状態管理用のMapを共有
-export { servers, getMaxMemoryFromConfig, findForgeArgsFile };
+export { servers, getMaxMemoryFromConfig, findArgsFile };

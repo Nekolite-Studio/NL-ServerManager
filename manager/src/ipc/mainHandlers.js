@@ -94,4 +94,19 @@ export function setupIpcHandlers(mainWindow) {
     ipcMain.handle('get-forge-versions', async (event) => {
         return await externalApiService.getForgeVersions();
     });
+
+    // Fabric Version Handling
+    ipcMain.handle('get-fabric-versions', async (event) => {
+        return await externalApiService.getFabricVersions();
+    });
+
+    // Quilt Version Handling
+    ipcMain.handle('get-quilt-versions', async (event) => {
+        return await externalApiService.getQuiltVersions();
+    });
+
+    // NeoForge Version Handling
+    ipcMain.handle('get-neoforge-versions', async (event, { mcVersion }) => {
+        return await externalApiService.getNeoForgeVersions(mcVersion);
+    });
 }

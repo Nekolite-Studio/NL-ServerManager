@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getRequiredJavaVersion: (options) => ipcRenderer.invoke('get-required-java-version', options),
   getServerPropertiesAnnotations: () => ipcRenderer.invoke('get-server-properties-annotations'),
   getForgeVersions: () => ipcRenderer.invoke('get-forge-versions'),
+  getFabricVersions: () => ipcRenderer.invoke('get-fabric-versions'),
+  getQuiltVersions: () => ipcRenderer.invoke('get-quilt-versions'),
+  getNeoForgeVersions: (mcVersion) => ipcRenderer.invoke('get-neoforge-versions', { mcVersion }),
 
   // 汎用プロキシ経由でAgentにメッセージを送信
   proxyToAgent: (agentId, message) => ipcRenderer.send('proxy-to-agent', { agentId, message }),
