@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getQuiltVersions: () => ipcRenderer.invoke('get-quilt-versions'),
   getNeoForgeVersions: (mcVersion) => ipcRenderer.invoke('get-neoforge-versions', { mcVersion }),
 
+  // Agent Management
+  addAgent: (config) => ipcRenderer.invoke('add-agent', config),
+  deleteAgent: (agentId) => ipcRenderer.invoke('delete-agent', { agentId }),
+
   // 汎用プロキシ経由でAgentにメッセージを送信
   proxyToAgent: (agentId, message) => ipcRenderer.send('proxy-to-agent', { agentId, message }),
 

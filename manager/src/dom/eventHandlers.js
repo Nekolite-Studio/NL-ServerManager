@@ -43,6 +43,8 @@ export function setupDomListeners() {
             state.currentView = 'physical-detail';
             state.physicalServerDetailActiveTab = 'status';
             startMetricsStream('physicalServer', agentId);
+            // 詳細画面を開くときにシステム情報を要求する
+            window.electronAPI.proxyToAgent(agentId, { type: window.electronAPI.Message.GET_SYSTEM_INFO });
             updateView();
             return;
         }
@@ -276,6 +278,21 @@ export function setupDomListeners() {
                     }
                     break;
 
+                case 'delete-agent':
+                    if (agentId) {
+                        const agent = state.physicalServers.get(agentId);
+                        if (agent) {
+                            window.showConfirmationModal(`エージェント「${agent.config.alias}」を削除しますか？\n管理リストから削除されますが、エージェント自体は停止しません。`, () => {
+                                window.electronAPI.deleteAgent(agentId);
+                                state.currentView = 'physical';
+                                state.selectedPhysicalServerId = null;
+                                updateView();
+                                showNotification(`エージェント「${agent.config.alias}」を削除しました`, 'info');
+                            });
+                        }
+                    }
+                    break;
+
                 // 他のアクションもここに追加...
             }
         }
@@ -295,6 +312,11 @@ export function setupDomListeners() {
     const javaVersionSelect = document.getElementById('java-version-select');
     const installJavaBtn = document.getElementById('install-java-btn');
     const cancelJavaInstallBtn = document.getElementById('cancel-java-install-btn');
+
+    const registerAgentModal = document.getElementById('register-agent-modal');
+    const addAgentBtn = document.getElementById('add-agent-btn');
+    const cancelRegisterAgentBtn = document.getElementById('cancel-register-agent-btn');
+    const confirmRegisterAgentBtn = document.getElementById('confirm-register-agent-btn');
 
 
     confirmDeleteBtn.addEventListener('click', () => {
@@ -360,6 +382,50 @@ export function setupDomListeners() {
     if (cancelCreateServerBtn) {
         cancelCreateServerBtn.addEventListener('click', () => {
             if (createServerModal) createServerModal.classList.add('hidden');
+        });
+    }
+
+    // --- Agent Registration ---
+    if (addAgentBtn) {
+        addAgentBtn.addEventListener('click', () => {
+            if (registerAgentModal) {
+                document.getElementById('agent-name-input').value = '';
+                document.getElementById('agent-ip-input').value = '';
+                document.getElementById('agent-port-input').value = '8080';
+                registerAgentModal.classList.remove('hidden');
+            }
+        });
+    }
+
+    if (cancelRegisterAgentBtn) {
+        cancelRegisterAgentBtn.addEventListener('click', () => {
+            if (registerAgentModal) registerAgentModal.classList.add('hidden');
+        });
+    }
+
+    if (confirmRegisterAgentBtn) {
+        confirmRegisterAgentBtn.addEventListener('click', async () => {
+            const name = document.getElementById('agent-name-input').value;
+            const ip = document.getElementById('agent-ip-input').value;
+            const port = parseInt(document.getElementById('agent-port-input').value, 10);
+
+            if (!name || !ip || !port) {
+                showNotification('すべての項目を入力してください', 'error');
+                return;
+            }
+
+            try {
+                const result = await window.electronAPI.addAgent({ name, ip, port });
+                if (result.success) {
+                    showNotification(`エージェント「${name}」を登録しました`, 'success');
+                    if (registerAgentModal) registerAgentModal.classList.add('hidden');
+                    // 登録成功後、自動的に接続が試行され、リスト更新イベントが飛んでくるはず
+                } else {
+                    showNotification(`エージェント登録に失敗しました: ${result.error}`, 'error');
+                }
+            } catch (err) {
+                showNotification(`エラーが発生しました: ${err.message}`, 'error');
+            }
         });
     }
 

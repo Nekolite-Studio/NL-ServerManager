@@ -1,7 +1,7 @@
 import os from 'os';
 import si from 'systeminformation';
 import { Message } from '@nl-server-manager/common/protocol.js';
-import { getAllServers } from '../../serverManager.js';
+import { getAllServers, runningProcesses } from '../../serverManager.js';
 import { getSettings } from '../../settingsManager.js';
 
 /**
@@ -28,10 +28,12 @@ async function getMetrics() {
     const totalPlayers = runningServers.reduce((acc, s) => acc + (s.players?.current || 0), 0);
 
     // systeminformationを使用して実際の値を取得
-    const [cpuData, memData, fsData] = await Promise.all([
+    const [cpuData, memData, fsData, networkData, processesData] = await Promise.all([
         si.currentLoad(),
         si.mem(),
-        si.fsSize()
+        si.fsSize(),
+        si.networkStats(),
+        si.processes()
     ]);
 
     // CPU使用率
@@ -45,15 +47,36 @@ async function getMetrics() {
     const mainDisk = fsData.find(fs => serverDirectory.startsWith(fs.mount));
     const diskUsage = mainDisk ? ((mainDisk.used / mainDisk.size) * 100).toFixed(2) : '0.00';
 
+    // Network Speed (Mbps) - 全インターフェースの合計
+    // rx_sec: bytes received per second, tx_sec: bytes transferred per second
+    const totalRx = networkData.reduce((acc, iface) => acc + iface.rx_sec, 0);
+    const totalTx = networkData.reduce((acc, iface) => acc + iface.tx_sec, 0);
+    const networkSpeed = ((totalRx + totalTx) * 8 / 1024 / 1024).toFixed(2); // Bytes/sec -> Mbps
+
+    // Game Server Process Metrics
+    const gameServerMetrics = [];
+    for (const [serverId, process] of runningProcesses.entries()) {
+        const pid = process.pid;
+        const procInfo = processesData.list.find(p => p.pid === pid);
+        if (procInfo) {
+            gameServerMetrics.push({
+                serverId: serverId,
+                cpu: procInfo.cpu.toFixed(1),
+                mem: (procInfo.memRss / 1024 / 1024).toFixed(0) // MB
+            });
+        }
+    }
+
     return {
         cpuUsage: cpuUsage,
         ramUsage: ramUsage,
         diskUsage: diskUsage,
-        networkSpeed: 'N/A', // networkSpeedは一旦N/Aに
+        networkSpeed: networkSpeed,
         gameServers: {
             running: runningServers.length,
             stopped: stoppedServersCount,
             totalPlayers: totalPlayers,
+            details: gameServerMetrics
         },
     };
 }
@@ -71,10 +94,7 @@ export async function handleSystemMessage(ws, message) {
             ws.send(JSON.stringify({
                 type: Message.SYSTEM_INFO_RESPONSE,
                 requestId: requestId,
-                payload: {
-                    os: process.platform,
-                    arch: process.arch
-                }
+                payload: getSystemInfo()
             }));
             break;
         case Message.GET_METRICS:

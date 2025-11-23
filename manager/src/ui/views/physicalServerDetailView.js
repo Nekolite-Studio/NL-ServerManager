@@ -33,7 +33,7 @@ export const renderPhysicalServerDetail = (container) => {
         </div>
 
         <!-- Tabs -->
-        <div class="border-b border-gray-200 dark:border-gray-700 mt-6">
+        <div class="border-b border-gray-200 dark:border-gray-700">
             <nav class="-mb-px flex space-x-8" aria-label="Tabs">
                 <button data-tab="status" class="physical-detail-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${state.physicalServerDetailActiveTab === 'status' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}">
                     ステータス
@@ -111,7 +111,7 @@ const renderPhysicalTabContent = (container, agent, metrics, systemInfo, gameSer
                     <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <h3 class="text-lg font-semibold mb-4">システム情報</h3>
                         <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">OS</dt><dd id="p-detail-os" class="font-mono">${systemInfo.os || 'N/A'}</dd>
+                            <dt class="text-sm font-meFium text-gray-500 dark:text-gray-400">OS</dt><dd id="p-detail-os" class="font-mono">${systemInfo.os || 'N/A'}</dd>
                             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU</dt><dd id="p-detail-cpu-model" class="font-mono">${systemInfo.cpu || 'N/A'}</dd>
                             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total RAM</dt><dd id="p-detail-total-ram" class="font-mono">${systemInfo.totalRam || 'N/A'}</dd>
                             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Network</dt><dd id="p-detail-network" class="font-mono">${metrics.networkSpeed || 'N/A'} Mbps</dd>
@@ -124,6 +124,27 @@ const renderPhysicalTabContent = (container, agent, metrics, systemInfo, gameSer
                             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">停止中</dt><dd id="p-detail-stopped" class="font-bold text-red-500">${gameServers.stopped || 0}</dd>
                             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">合計プレイヤー</dt><dd id="p-detail-players" class="font-bold">${gameServers.totalPlayers || 0}</dd>
                         </dl>
+                    </div>
+                </div>
+
+                <!-- Game Server Process List -->
+                <div class="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-semibold">実行中のゲームサーバープロセス</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">サーバー名</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">CPU使用率</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">メモリ使用量</th>
+                                </tr>
+                            </thead>
+                            <tbody id="p-detail-server-list" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             `;
@@ -234,6 +255,31 @@ const updatePhysicalTabContent = (container, agent, metrics, systemInfo, gameSer
             if (stoppedEl) stoppedEl.textContent = gameServers.stopped || 0;
             const playersEl = container.querySelector('#p-detail-players');
             if (playersEl) playersEl.textContent = gameServers.totalPlayers || 0;
+
+            // Game Server List
+            const serverListEl = container.querySelector('#p-detail-server-list');
+            if (serverListEl) {
+                const details = gameServers.details || [];
+                if (details.length === 0) {
+                    serverListEl.innerHTML = '<tr><td colspan="3" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">実行中のサーバーはありません</td></tr>';
+                } else {
+                    serverListEl.innerHTML = details.map(d => {
+                        // サーバー名を取得するためにstateから検索
+                        // physicalServerDetailView.jsはagentオブジェクトを持っているので、そこからサーバーリストを引くのは難しい
+                        // 代わりにgetters.allServers()から検索する
+                        const server = getters.allServers().find(s => s.server_id === d.serverId);
+                        const serverName = server ? server.server_name : d.serverId;
+                        
+                        return `
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">${serverName}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${d.cpu}%</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${d.mem} MB</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
             break;
 
         case 'logs':

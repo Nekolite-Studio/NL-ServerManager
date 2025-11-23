@@ -108,7 +108,7 @@ export function setupIpcListeners() {
             agent.systemInfo = payload;
             // 必要に応じてUIを更新
             if (state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId) {
-                renderPhysicalServerDetail();
+                updateView();
             }
         }
     });

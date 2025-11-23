@@ -9,7 +9,8 @@ import {
 
 import {
     startServer,
-    stopServer
+    stopServer,
+    runningProcesses
 } from './services/lifecycleService.js';
 
 import {
@@ -44,6 +45,7 @@ export {
     deleteServer,
     startServer,
     stopServer,
+    runningProcesses,
     startMetricsStream,
     stopMetricsStream,
     acceptEula,

@@ -29,20 +29,32 @@ export function setupIpcHandlers(mainWindow) {
         }
     });
 
-    ipcMain.on('add-agent', (event, config) => {
+    ipcMain.handle('add-agent', async (event, config) => {
         console.log('Received request to add agent:', config);
-        const id = uuidv4();
-        agentManager.createAgent(id, config);
-        agentManager.persistAgents();
+        try {
+            const id = uuidv4();
+            agentManager.createAgent(id, config);
+            agentManager.persistAgents();
+            return { success: true, id };
+        } catch (error) {
+            console.error('Failed to add agent:', error);
+            return { success: false, error: error.message };
+        }
     });
 
     ipcMain.on('update-agent-settings', (event, { agentId, config }) => {
         agentManager.updateAgentSettings(agentId, config);
     });
 
-    ipcMain.on('delete-agent', (event, { agentId }) => {
+    ipcMain.handle('delete-agent', async (event, { agentId }) => {
         console.log(`Received request to delete agent: ${agentId}`);
-        agentManager.deleteAgent(agentId);
+        try {
+            agentManager.deleteAgent(agentId);
+            return { success: true };
+        } catch (error) {
+            console.error('Failed to delete agent:', error);
+            return { success: false, error: error.message };
+        }
     });
 
     // Agentにメッセージをプロキシする汎用ハンドラ
