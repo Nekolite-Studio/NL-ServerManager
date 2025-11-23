@@ -103,7 +103,7 @@ graph TD
 1.  **イベント発生:** ユーザー操作またはMainプロセスからのIPCメッセージが `renderer.js` に到着する。
 2.  **状態更新:** `renderer.js` は、イベントに応じて `renderer-state.js` の `state` オブジェクトを更新する。 **直接DOMを操作することはない。**
 3.  **再描画:** `renderer.js` が `renderer-ui.js` の描画関数（例: `updateView()`）を呼び出す。
-4.  **UI反映:** `renderer-ui.js` は、更新された `state` オブジェクトを唯一の信頼できる情報源（Single Source of Truth）として参照し、**UI全体をゼロから再構築してDOMに反映させる。これにより、状態とUIの一貫性を保証する。**
+4.  **UI反映:** `renderer-ui.js` は、更新された `state` オブジェクトを唯一の信頼できる情報源（Single Source of Truth）として参照する。**初回描画時はUI全体を構築するが、更新時はDOMの全置換を避け、変化した値のみを更新する「部分更新 (Partial Update)」を行う。** これにより、状態とUIの一貫性を保証しつつ、入力中のフォームやスクロール位置などのUI状態を維持する。
 
 ### 3.2. Manager-Agent間の非同期通信フロー
 

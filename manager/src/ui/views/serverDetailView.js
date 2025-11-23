@@ -6,6 +6,17 @@ import { renderPropertiesEditor } from '../components/propertiesEditor.js';
 export const renderServerDetail = (container) => {
     const server = getters.selectedServer();
     if (!server || !container) return;
+
+    // 既に同じサーバーが表示されている場合は、値のみ更新する (Partial Update)
+    const currentServerId = container.dataset.serverId;
+    if (currentServerId === server.server_id) {
+        updateServerDetailValues(container, server);
+        updateDetailViewContent(server); // コンテンツエリアの更新 (タブごとの制御は内部で行う)
+        return;
+    }
+
+    // 初回描画 (Full Render)
+    container.dataset.serverId = server.server_id;
     
     const host = state.physicalServers.get(server.hostId);
     const isBeingDeleted = state.serversBeingDeleted.has(server.server_id);
@@ -34,7 +45,7 @@ export const renderServerDetail = (container) => {
 
                 <div class="flex items-center gap-2 w-full sm:w-auto flex-shrink-0">
                     <button data-action="open-dir" class="w-1/2 sm:w-auto bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 flex-grow" ${isBeingDeleted ? 'disabled' : ''}>フォルダ</button>
-                    <button data-action="toggle-status" class="w-1/2 sm:w-auto font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 flex-grow ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}" ${isBeingDeleted || server.status === 'starting' || server.status === 'stopping' ? 'disabled' : ''}>
+                    <button id="detail-status-btn" data-action="toggle-status" class="w-1/2 sm:w-auto font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 flex-grow ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}" ${isBeingDeleted || server.status === 'starting' || server.status === 'stopping' ? 'disabled' : ''}>
                         ${server.status === 'running' ? '停止' : (server.status === 'starting' ? '起動中...' : (server.status === 'stopping' ? '停止中...' : '起動'))}
                     </button>
                 </div>
@@ -82,22 +93,22 @@ export const renderServerDetail = (container) => {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">ステータス</div>
-                <div class="text-2xl font-bold ${statusClasses.text} mt-1">
+                <div id="detail-status-text" class="text-2xl font-bold ${statusClasses.text} mt-1">
                     ${{'running': '起動済み', 'starting': '起動中', 'stopping': '停止中', 'stopped': '停止済み'}[server.status] || '不明'}
                 </div>
             </div>
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">プレイヤー</div>
-                <div class="text-4xl font-extrabold text-primary mt-1">${server.players?.current || 0} <span class="text-lg text-gray-500">/ ${server.players?.max || 20}</span></div>
+                <div id="detail-players" class="text-4xl font-extrabold text-primary mt-1">${server.players?.current || 0} <span class="text-lg text-gray-500">/ ${server.players?.max || 20}</span></div>
             </div>
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">TPS</div>
-                <div class="text-4xl font-extrabold ${tpsColor} mt-1">${server.status === 'running' ? (server.tps || 0).toFixed(1) : '-'}</div>
+                <div id="detail-tps" class="text-4xl font-extrabold ${tpsColor} mt-1">${server.status === 'running' ? (server.tps || 0).toFixed(1) : '-'}</div>
             </div>
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU / メモリ</div>
-                <div class="text-2xl font-bold ${cpuColor} mt-1">${server.status === 'running' ? (server.cpu || 0).toFixed(1) : '0.0'}%</div>
-                <div class="text-sm ${memColor} mt-1">${(server.memory / 1024).toFixed(1)} GB / ${(server.memoryMax / 1024).toFixed(1)} GB</div>
+                <div id="detail-cpu" class="text-2xl font-bold ${cpuColor} mt-1">${server.status === 'running' ? (server.cpu || 0).toFixed(1) : '0.0'}%</div>
+                <div id="detail-memory" class="text-sm ${memColor} mt-1">${(server.memory / 1024).toFixed(1)} GB / ${(server.memoryMax / 1024).toFixed(1)} GB</div>
             </div>
         </div>
 
@@ -124,6 +135,69 @@ export const renderServerDetail = (container) => {
     updateDetailViewContent(server);
 };
 
+// 部分更新用の関数
+const updateServerDetailValues = (container, server) => {
+    const isBeingDeleted = state.serversBeingDeleted.has(server.server_id);
+    const statusClasses = getStatusClasses(server.status);
+    const tpsColor = getTpsColor(server.tps || 0);
+    const cpuColor = getCpuColor(server.cpu || 0);
+    const memColor = getMemoryColor(server.memory || 0, server.memoryMax || 1);
+
+    // ステータスボタン
+    const statusBtn = container.querySelector('#detail-status-btn');
+    if (statusBtn) {
+        statusBtn.className = `w-1/2 sm:w-auto font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 flex-grow ${server.status === 'running' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`;
+        statusBtn.innerHTML = server.status === 'running' ? '停止' : (server.status === 'starting' ? '起動中...' : (server.status === 'stopping' ? '停止中...' : '起動'));
+        statusBtn.disabled = isBeingDeleted || server.status === 'starting' || server.status === 'stopping';
+    }
+
+    // ステータステキスト
+    const statusText = container.querySelector('#detail-status-text');
+    if (statusText) {
+        statusText.className = `text-2xl font-bold ${statusClasses.text} mt-1`;
+        statusText.textContent = {'running': '起動済み', 'starting': '起動中', 'stopping': '停止中', 'stopped': '停止済み'}[server.status] || '不明';
+    }
+
+    // プレイヤー
+    const players = container.querySelector('#detail-players');
+    if (players) {
+        players.innerHTML = `${server.players?.current || 0} <span class="text-lg text-gray-500">/ ${server.players?.max || 20}</span>`;
+    }
+
+    // TPS
+    const tps = container.querySelector('#detail-tps');
+    if (tps) {
+        tps.className = `text-4xl font-extrabold ${tpsColor} mt-1`;
+        tps.textContent = server.status === 'running' ? (server.tps || 0).toFixed(1) : '-';
+    }
+
+    // CPU
+    const cpu = container.querySelector('#detail-cpu');
+    if (cpu) {
+        cpu.className = `text-2xl font-bold ${cpuColor} mt-1`;
+        cpu.textContent = `${server.status === 'running' ? (server.cpu || 0).toFixed(1) : '0.0'}%`;
+    }
+
+    // Memory
+    const memory = container.querySelector('#detail-memory');
+    if (memory) {
+        memory.className = `text-sm ${memColor} mt-1`;
+        memory.textContent = `${(server.memory / 1024).toFixed(1)} GB / ${(server.memoryMax / 1024).toFixed(1)} GB`;
+    }
+    
+    // タブボタンのアクティブ状態更新
+    const tabBtns = container.querySelectorAll('.detail-tab-btn');
+    tabBtns.forEach(btn => {
+        const tab = btn.dataset.tab;
+        if (tab === state.detailActiveTab) {
+            btn.className = 'detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg bg-primary text-white';
+        } else {
+            btn.className = 'detail-tab-btn w-full text-left px-4 py-3 font-medium text-sm rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700';
+        }
+        btn.disabled = isBeingDeleted;
+    });
+};
+
 export const updateDetailViewContent = (server) => {
     const mainArea = document.getElementById('detail-main-area');
     if (!mainArea) return;
@@ -137,9 +211,23 @@ export const updateDetailViewContent = (server) => {
         return;
     }
 
+    // 現在表示中のタブコンテンツを確認
+    const currentTab = mainArea.dataset.activeTab;
+
+    // タブが切り替わった場合、またはコンテンツが空の場合は再描画
+    if (currentTab !== state.detailActiveTab || !mainArea.hasChildNodes()) {
+        mainArea.dataset.activeTab = state.detailActiveTab;
+        renderTabContent(mainArea, server);
+    } else {
+        // 同じタブを表示中の場合は、コンテンツ内の動的要素のみ更新
+        updateTabContent(mainArea, server);
+    }
+};
+
+const renderTabContent = (container, server) => {
     switch(state.detailActiveTab) {
         case 'console':
-            mainArea.innerHTML = `
+            container.innerHTML = `
                 <div class="flex flex-col h-full">
                     <div class="bg-gray-50 dark:bg-black p-4 rounded-t-lg flex-1 overflow-y-auto custom-scrollbar">
                         <pre id="server-log-output" class="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono">${(server.logs || []).join('\n')}</pre>
@@ -152,14 +240,14 @@ export const updateDetailViewContent = (server) => {
                     </div>
                 </div>
             `;
-            const logOutputEl = mainArea.querySelector('#server-log-output');
+            const logOutputEl = container.querySelector('#server-log-output');
             if(logOutputEl) logOutputEl.parentElement.scrollTop = logOutputEl.parentElement.scrollHeight;
             break;
 
         case 'launch-config':
             {
                 const runtime = server.runtime || {};
-                mainArea.innerHTML = `
+                container.innerHTML = `
                     <div class="p-6 h-full flex flex-col">
                         <div class="flex justify-between items-center mb-4">
                             <h2 class="text-xl font-bold">起動構成</h2>
@@ -193,37 +281,37 @@ export const updateDetailViewContent = (server) => {
             break;
 
         case 'properties':
-                    mainArea.innerHTML = `
-                        <div class="p-6 h-full flex flex-col">
-                            <div class="flex justify-between items-center mb-4">
-                                <h2 class="text-xl font-bold">サーバー設定 (server.properties)</h2>
-                                <button data-action="save-properties" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">変更を保存</button>
-                            </div>
-                            <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                                <div class="text-center p-8 text-gray-500">読み込み中...</div>
-                            </div>
-                        </div>
-                    `;
-                    renderPropertiesEditor(server).then(editorElement => {
-                        const editorContainer = mainArea.querySelector('.custom-scrollbar');
-                        if (editorContainer) {
-                            editorContainer.innerHTML = ''; // 読み込み中... をクリア
-                            editorContainer.appendChild(editorElement);
-                        }
-                    });
-                    break;
+            container.innerHTML = `
+                <div class="p-6 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">サーバー設定 (server.properties)</h2>
+                        <button data-action="save-properties" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">変更を保存</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                        <div class="text-center p-8 text-gray-500">読み込み中...</div>
+                    </div>
+                </div>
+            `;
+            renderPropertiesEditor(server).then(editorElement => {
+                const editorContainer = container.querySelector('.custom-scrollbar');
+                if (editorContainer) {
+                    editorContainer.innerHTML = ''; // 読み込み中... をクリア
+                    editorContainer.appendChild(editorElement);
+                }
+            });
+            break;
 
         case 'mods':
         case 'plugins':
-            mainArea.innerHTML = `<div class="p-6"><h3 class="text-xl font-bold">${state.detailActiveTab === 'mods' ? 'Mod' : 'Plugin'}管理</h3><p class="mt-4 text-gray-500">（この機能は現在開発中です）</p></div>`;
+            container.innerHTML = `<div class="p-6"><h3 class="text-xl font-bold">${state.detailActiveTab === 'mods' ? 'Mod' : 'Plugin'}管理</h3><p class="mt-4 text-gray-500">（この機能は現在開発中です）</p></div>`;
             break;
 
         case 'players':
-            mainArea.innerHTML = `<div class="p-6"><h3 class="text-xl font-bold">プレイヤー管理</h3><p class="mt-4 text-gray-500">（この機能は現在開発中です）</p></div>`;
+            container.innerHTML = `<div class="p-6"><h3 class="text-xl font-bold">プレイヤー管理</h3><p class="mt-4 text-gray-500">（この機能は現在開発中です）</p></div>`;
             break;
         
         case 'danger':
-            mainArea.innerHTML = `
+            container.innerHTML = `
                 <div class="p-6">
                     <h3 class="text-xl font-bold text-red-500 dark:text-red-400">危険ゾーン</h3>
                     <div class="mt-6 bg-red-100 dark:bg-red-900/50 p-6 rounded-lg space-y-6">
@@ -247,7 +335,7 @@ export const updateDetailViewContent = (server) => {
             `;
             break;
         default:
-            mainArea.innerHTML = `<p class="p-6 text-gray-500">不明なタブが選択されました: ${state.detailActiveTab}</p>`;
+            container.innerHTML = `<p class="p-6 text-gray-500">不明なタブが選択されました: ${state.detailActiveTab}</p>`;
             break;
     }
 };

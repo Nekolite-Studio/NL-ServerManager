@@ -6,6 +6,17 @@ export const renderPhysicalServerDetail = (container) => {
     const agent = getters.selectedPhysicalServer();
     if (!agent || !container) return;
 
+    // Partial Update Check
+    const currentAgentId = container.dataset.agentId;
+    if (currentAgentId === agent.id) {
+        updatePhysicalServerDetailValues(container, agent);
+        updatePhysicalServerDetailContent();
+        return;
+    }
+
+    // Full Render
+    container.dataset.agentId = agent.id;
+
     container.innerHTML = `
         <!-- Header -->
         <div>
@@ -42,6 +53,19 @@ export const renderPhysicalServerDetail = (container) => {
     updatePhysicalServerDetailContent();
 };
 
+const updatePhysicalServerDetailValues = (container, agent) => {
+    // タブのアクティブ状態更新
+    const tabBtns = container.querySelectorAll('.physical-detail-tab-btn');
+    tabBtns.forEach(btn => {
+        const tab = btn.dataset.tab;
+        if (tab === state.physicalServerDetailActiveTab) {
+            btn.className = 'physical-detail-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-primary text-primary';
+        } else {
+            btn.className = 'physical-detail-tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300';
+        }
+    });
+};
+
 export const updatePhysicalServerDetailContent = () => {
     const container = document.getElementById('physical-detail-content');
     const agent = getters.selectedPhysicalServer();
@@ -51,43 +75,54 @@ export const updatePhysicalServerDetailContent = () => {
     const systemInfo = agent.systemInfo || {};
     const gameServers = metrics.gameServers || {};
 
+    // タブ切り替えチェック
+    const currentTab = container.dataset.activeTab;
+    if (currentTab !== state.physicalServerDetailActiveTab || !container.hasChildNodes()) {
+        container.dataset.activeTab = state.physicalServerDetailActiveTab;
+        renderPhysicalTabContent(container, agent, metrics, systemInfo, gameServers);
+    } else {
+        updatePhysicalTabContent(container, agent, metrics, systemInfo, gameServers);
+    }
+};
+
+const renderPhysicalTabContent = (container, agent, metrics, systemInfo, gameServers) => {
     switch (state.physicalServerDetailActiveTab) {
         case 'status':
             container.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div class="text-sm font-medium text-gray-500 dark:text-gray-400">接続状態</div>
-                        <div class="text-2xl font-bold ${getAgentStatusClasses(agent.status).text} mt-1">${agent.status}</div>
+                        <div id="p-detail-status" class="text-2xl font-bold ${getAgentStatusClasses(agent.status).text} mt-1">${agent.status}</div>
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU 使用率</div>
-                        <div class="text-4xl font-extrabold ${getCpuColor(parseFloat(metrics.cpuUsage) || 0)} mt-1">${metrics.cpuUsage || 'N/A'}<span class="text-lg">%</span></div>
+                        <div id="p-detail-cpu" class="text-4xl font-extrabold ${getCpuColor(parseFloat(metrics.cpuUsage) || 0)} mt-1">${metrics.cpuUsage || 'N/A'}<span class="text-lg">%</span></div>
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div class="text-sm font-medium text-gray-500 dark:text-gray-400">RAM 使用率</div>
-                        <div class="text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.ramUsage) || 0, 100)} mt-1">${metrics.ramUsage || 'N/A'}<span class="text-lg">%</span></div>
+                        <div id="p-detail-ram" class="text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.ramUsage) || 0, 100)} mt-1">${metrics.ramUsage || 'N/A'}<span class="text-lg">%</span></div>
                     </div>
                      <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Disk 使用率</div>
-                        <div class="text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.diskUsage) || 0, 100)} mt-1">${metrics.diskUsage || 'N/A'}<span class="text-lg">%</span></div>
+                        <div id="p-detail-disk" class="text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.diskUsage) || 0, 100)} mt-1">${metrics.diskUsage || 'N/A'}<span class="text-lg">%</span></div>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
                     <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <h3 class="text-lg font-semibold mb-4">システム情報</h3>
                         <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">OS</dt><dd class="font-mono">${systemInfo.os || 'N/A'}</dd>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU</dt><dd class="font-mono">${systemInfo.cpu || 'N/A'}</dd>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total RAM</dt><dd class="font-mono">${systemInfo.totalRam || 'N/A'}</dd>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Network</dt><dd class="font-mono">${metrics.networkSpeed || 'N/A'} Mbps</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">OS</dt><dd id="p-detail-os" class="font-mono">${systemInfo.os || 'N/A'}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">CPU</dt><dd id="p-detail-cpu-model" class="font-mono">${systemInfo.cpu || 'N/A'}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total RAM</dt><dd id="p-detail-total-ram" class="font-mono">${systemInfo.totalRam || 'N/A'}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Network</dt><dd id="p-detail-network" class="font-mono">${metrics.networkSpeed || 'N/A'} Mbps</dd>
                         </dl>
                     </div>
                     <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                         <h3 class="text-lg font-semibold mb-4">ゲームサーバー</h3>
                         <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">実行中</dt><dd class="font-bold text-green-500">${gameServers.running || 0}</dd>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">停止中</dt><dd class="font-bold text-red-500">${gameServers.stopped || 0}</dd>
-                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">合計プレイヤー</dt><dd class="font-bold">${gameServers.totalPlayers || 0}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">実行中</dt><dd id="p-detail-running" class="font-bold text-green-500">${gameServers.running || 0}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">停止中</dt><dd id="p-detail-stopped" class="font-bold text-red-500">${gameServers.stopped || 0}</dd>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">合計プレイヤー</dt><dd id="p-detail-players" class="font-bold">${gameServers.totalPlayers || 0}</dd>
                         </dl>
                     </div>
                 </div>
@@ -146,13 +181,72 @@ export const updatePhysicalServerDetailContent = () => {
             container.innerHTML = `
                 <div class="bg-gray-900 dark:bg-black text-white font-mono text-xs rounded-lg shadow-lg" style="height: 60vh;">
                     <div class="p-4 overflow-y-auto custom-scrollbar h-full">
-                        <pre>${(agent.logs || ['No logs yet.']).join('\n')}</pre>
+                        <pre id="physical-log-output">${(agent.logs || ['No logs yet.']).join('\n')}</pre>
                     </div>
                 </div>
             `;
             const logContainer = container.querySelector('.custom-scrollbar');
             if (logContainer) {
                 logContainer.scrollTop = logContainer.scrollHeight;
+            }
+            break;
+    }
+};
+
+const updatePhysicalTabContent = (container, agent, metrics, systemInfo, gameServers) => {
+    switch (state.physicalServerDetailActiveTab) {
+        case 'status':
+            const statusEl = container.querySelector('#p-detail-status');
+            if (statusEl) {
+                statusEl.className = `text-2xl font-bold ${getAgentStatusClasses(agent.status).text} mt-1`;
+                statusEl.textContent = agent.status;
+            }
+            const cpuEl = container.querySelector('#p-detail-cpu');
+            if (cpuEl) {
+                cpuEl.className = `text-4xl font-extrabold ${getCpuColor(parseFloat(metrics.cpuUsage) || 0)} mt-1`;
+                cpuEl.innerHTML = `${metrics.cpuUsage || 'N/A'}<span class="text-lg">%</span>`;
+            }
+            const ramEl = container.querySelector('#p-detail-ram');
+            if (ramEl) {
+                ramEl.className = `text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.ramUsage) || 0, 100)} mt-1`;
+                ramEl.innerHTML = `${metrics.ramUsage || 'N/A'}<span class="text-lg">%</span>`;
+            }
+            const diskEl = container.querySelector('#p-detail-disk');
+            if (diskEl) {
+                diskEl.className = `text-4xl font-extrabold ${getMemoryColor(parseFloat(metrics.diskUsage) || 0, 100)} mt-1`;
+                diskEl.innerHTML = `${metrics.diskUsage || 'N/A'}<span class="text-lg">%</span>`;
+            }
+            
+            // System Info
+            const osEl = container.querySelector('#p-detail-os');
+            if (osEl) osEl.textContent = systemInfo.os || 'N/A';
+            const cpuModelEl = container.querySelector('#p-detail-cpu-model');
+            if (cpuModelEl) cpuModelEl.textContent = systemInfo.cpu || 'N/A';
+            const totalRamEl = container.querySelector('#p-detail-total-ram');
+            if (totalRamEl) totalRamEl.textContent = systemInfo.totalRam || 'N/A';
+            const networkEl = container.querySelector('#p-detail-network');
+            if (networkEl) networkEl.textContent = `${metrics.networkSpeed || 'N/A'} Mbps`;
+
+            // Game Servers
+            const runningEl = container.querySelector('#p-detail-running');
+            if (runningEl) runningEl.textContent = gameServers.running || 0;
+            const stoppedEl = container.querySelector('#p-detail-stopped');
+            if (stoppedEl) stoppedEl.textContent = gameServers.stopped || 0;
+            const playersEl = container.querySelector('#p-detail-players');
+            if (playersEl) playersEl.textContent = gameServers.totalPlayers || 0;
+            break;
+
+        case 'logs':
+            const logOutputEl = container.querySelector('#physical-log-output');
+            if (logOutputEl) {
+                const parent = logOutputEl.parentElement;
+                const isScrolledToBottom = parent.scrollHeight - parent.scrollTop <= parent.clientHeight + 50;
+                
+                logOutputEl.textContent = (agent.logs || ['No logs yet.']).join('\n');
+                
+                if (isScrolledToBottom) {
+                    parent.scrollTop = parent.scrollHeight;
+                }
             }
             break;
     }

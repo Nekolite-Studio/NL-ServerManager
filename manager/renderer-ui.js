@@ -26,7 +26,7 @@ const updateDetailView = () => {
 };
 
 const updateView = () => {
-    console.log(`[View] Updating view to: ${state.currentView}`);
+    // console.log(`[View] Updating view to: ${state.currentView}`); // ログ過多を防ぐためコメントアウト
     
     // DOM要素の取得 (renderer.js で初期化されているはずだが、念のためチェック)
     const serverListView = window.serverListView;
@@ -41,6 +41,8 @@ const updateView = () => {
         return;
     }
 
+    // ビューの表示切り替え
+    // 注意: hiddenクラスの切り替えは、DOMの再構築を引き起こさないため安全です
     serverListView.classList.toggle('hidden', state.currentView !== 'list');
     physicalServerListView.classList.toggle('hidden', state.currentView !== 'physical');
     serverDetailView.classList.toggle('hidden', state.currentView !== 'detail');
@@ -63,6 +65,8 @@ const updateView = () => {
         navPhysicalServers.classList.toggle('dark:text-gray-300', !isPhysicalView);
     }
 
+    // 各ビューのレンダリング関数を呼び出し
+    // 各関数内部で「初回描画」か「部分更新」かを判断して処理します
     if (state.currentView === 'list') {
         renderServerList(window.serverListContainer);
     } else if (state.currentView === 'detail') {
