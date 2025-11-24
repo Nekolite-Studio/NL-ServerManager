@@ -69,36 +69,41 @@ export function startMetricsStream(ws, serverId) {
 
     console.log(`[ServerManager] Starting metrics stream for server ${serverId}.`);
 
+    let isCollecting = false;
     const intervalId = setInterval(async () => {
-        const process = runningProcesses.get(serverId);
-        if (!process) {
-            stopMetricsStream(serverId);
-            return;
-        }
+        if (isCollecting) return;
+        isCollecting = true;
 
         try {
+            const process = runningProcesses.get(serverId);
+            if (!process) {
+                stopMetricsStream(serverId);
+                return;
+            }
+
             const processInfo = await si.processes();
             const serverProcess = processInfo.list.find(p => p.pid === process.pid);
             const gameMetrics = await getGameServerMetrics(serverId);
-            // console.log(serverProcess); // デバッグ用
+
             if (ws && ws.readyState === 1) {
                 const serverConfig = getServer(serverId);
                 const metrics = {
                     serverId: serverId,
                     cpu: serverProcess ? serverProcess.cpu : 0,
-                    memory: serverProcess ? Math.round(serverProcess.memRss / 1024) : 0, // MB
-                    memoryMax: getMaxMemoryFromConfig(serverConfig), // ヘルパー関数を使用
+                    memory: serverProcess ? Math.round(serverProcess.memRss / 1024) : 0,
+                    memoryMax: getMaxMemoryFromConfig(serverConfig),
                     ...gameMetrics,
                 };
                 ws.send(JSON.stringify({ type: Message.GAME_SERVER_METRICS_UPDATE, payload: metrics }));
             } else {
-                // WebSocketが切断されたらストリームを停止
                 stopMetricsStream(serverId);
             }
         } catch (err) {
             console.error(`[ServerManager] Failed to collect metrics for server ${serverId}:`, err);
+        } finally {
+            isCollecting = false; // ロック解除
         }
-    }, 1000); // 1秒ごと
+    }, 500); 
 
     metricsIntervals.set(serverId, intervalId);
 }

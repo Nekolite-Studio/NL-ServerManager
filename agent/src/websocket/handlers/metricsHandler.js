@@ -26,19 +26,27 @@ export function handleMetricsMessage(ws, message) {
                         return;
                     }
                     console.log(`[Agent] Starting physical server metrics stream ${streamId}.`);
+                    let isCollecting = false;
                     const intervalId = setInterval(async () => {
+                        if (isCollecting) return;
+                        isCollecting = true; // ロック取得
                         try {
+                            if (ws.readyState !== WebSocket.OPEN) {
+                                clearInterval(intervalId);
+                                physicalServerMetricsIntervals.delete(streamId);
+                                return;
+                            }
+
                             const metrics = await getMetrics();
                             if (ws.readyState === WebSocket.OPEN) {
                                 ws.send(JSON.stringify({ type: Message.PHYSICAL_SERVER_METRICS_UPDATE, payload: metrics }));
-                            } else {
-                                clearInterval(intervalId);
-                                physicalServerMetricsIntervals.delete(streamId);
                             }
                         } catch (error) {
                             console.error(`[Agent] Error getting physical server metrics:`, error);
+                        } finally {
+                            isCollecting = false; // ロック解除
                         }
-                    }, 1000);
+                    }, 500);
                     physicalServerMetricsIntervals.set(streamId, intervalId);
                 }
             }

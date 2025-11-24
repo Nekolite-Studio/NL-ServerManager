@@ -27,7 +27,7 @@
     "esbuild": "^0.23.0",
     "npm-watch": "^0.13.0",
     "uuid": "^13.0.0",
-    "ws": "^8.17.0"
+    "ws": "^8.18.3"
   },
   "build": {
     "appId": "com.example.servermanager",
@@ -54,6 +54,6 @@
     "@nl-server-manager/common": "1.0.0",
     "axios": "^1.13.2",
     "electron-store": "^8.1.0",
-    "zod": "^4.1.12"
+    "zod": "^4.1.13"
   }
 }

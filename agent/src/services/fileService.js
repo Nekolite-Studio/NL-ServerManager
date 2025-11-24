@@ -126,18 +126,39 @@ export function extractArchive(archivePath, destDir, onProgress = () => { }) {
             fs.mkdirSync(destDir, { recursive: true });
         }
 
+        // Zip展開時のエントリ処理
         const onEntry = (entry) => {
-            // strip: 1 に相当する処理
-            const strippedPath = entry.path.split(path.sep).slice(1).join(path.sep);
-            if (!strippedPath) return; // 親ディレクトリ自体はスキップ
+            // Zip内のパスは通常 '/' 区切りであるため、OS依存の path.sep ではなく '/' で分割する
+            const parts = entry.path.split('/');
+            
+            // strip: 1 に相当する処理 (先頭のディレクトリを除去)
+            const strippedParts = parts.slice(1);
+            
+            // 親ディレクトリ自体、またはルート直下のファイルの場合はスキップ
+            if (strippedParts.length === 0) {
+                entry.autodrain(); // 重要: スキップする場合でも必ずデータを読み捨てる(drain)必要がある
+                return;
+            }
+
+            // OSのセパレータを使って展開先パスを構築
+            const strippedPath = strippedParts.join(path.sep);
             const destPath = path.join(destDir, strippedPath);
 
             if (entry.type === 'Directory') {
                 fs.mkdirSync(destPath, { recursive: true });
                 entry.autodrain();
             } else {
+                // ファイル書き込み前に親ディレクトリの存在を確認・作成
+                const parentDir = path.dirname(destPath);
+                if (!fs.existsSync(parentDir)) {
+                    fs.mkdirSync(parentDir, { recursive: true });
+                }
+
                 entry.pipe(fs.createWriteStream(destPath))
-                    .on('error', reject);
+                    .on('error', (err) => {
+                        console.error(`[FileService] Failed to extract ${entry.path}:`, err);
+                        reject(err);
+                    });
             }
         };
 
@@ -161,6 +182,7 @@ export function extractArchive(archivePath, destDir, onProgress = () => { }) {
             sourceStream.pipe(unzipper.Parse())
                 .on('entry', onEntry)
                 .on('finish', () => {
+                    // 完了通知
                     if (lastNotifiedProgress < 100) {
                         onProgress({ status: 'extracting', message: '展開完了', progress: 100 });
                     }
@@ -171,6 +193,7 @@ export function extractArchive(archivePath, destDir, onProgress = () => { }) {
                 .on('error', reject);
 
         } else if (archivePath.endsWith('.tar.gz') || archivePath.endsWith('.tgz') || archivePath.endsWith('.gz')) {
+            // node-tar はクロスプラットフォーム対応済み
             sourceStream.pipe(tar.x({
                 cwd: destDir,
                 strip: 1,
