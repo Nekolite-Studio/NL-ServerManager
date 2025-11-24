@@ -115,7 +115,7 @@
 -   **`schema_version` (string):** 設定ファイルのスキーマバージョン。
 -   **`server_id` (string):** サーバーの一意な識別子。ディレクトリ名と一致します。
 -   **`server_name` (string):** `manager`のUI上に表示されるサーバー名。
--   **`server_type` (string):** サーバーの種類。`vanilla`, `forge`, `fabric`, `quilt`, `neoforge` のいずれか。
+-   **`server_type` (string):** サーバーの種類。`vanilla`, `forge`, `fabric`, `quilt`, `neoforge`, `paper`, `mohist` のいずれか。
 -   **`loader_version` (string | null):** Modローダーのバージョン（Modサーバーの場合）。
 -   **`runtime` (Object):** サーバーの実行環境を定義します。
     -   **`java_path` (string | null):** Java実行ファイルの絶対パス。`'default'`または`null`の場合、`java_version`に基づいて自動検出されるか、システムのデフォルト`java`が使用されます。

@@ -345,7 +345,7 @@ export function setupDomListeners() {
     });
 
     if (addServerBtn) {
-        addServerBtn.addEventListener('click', () => {
+        addServerBtn.addEventListener('click', async () => { // async を追加
             const hostSelect = document.getElementById('host-select');
             if (!hostSelect) return;
 
@@ -368,12 +368,8 @@ export function setupDomListeners() {
                 if (confirmCreateServerBtn) confirmCreateServerBtn.disabled = false;
             }
 
-            // バージョンリストの取得を要求
-            const versionSelect = document.getElementById('version-select');
-            if (versionSelect) {
-                versionSelect.innerHTML = '<option>バージョンを読み込み中...</option>';
-            }
-            window.electronAPI.getMinecraftVersions();
+            // サーバータイプに応じたバージョンリストの更新をトリガー
+            document.querySelector('input[name="server-type"]:checked').dispatchEvent(new Event('change', { bubbles: true }));
 
             if (createServerModal) createServerModal.classList.remove('hidden');
         });
@@ -439,10 +435,25 @@ export function setupDomListeners() {
     let cachedForgePromotions = null;
     let cachedFabricVersions = null;
     let cachedQuiltVersions = null;
+    let cachedMohistVersions = null; // MohistのMCバージョンリストのキャッシュ
+    let cachedMohistBuilds = new Map(); // Mohistのビルドリストのキャッシュ (MCバージョンごとに)
+
+    async function updateMcVersionsForMohist() {
+        if (!cachedMohistVersions) {
+            const result = await window.electronAPI.getMohistVersions();
+            if (result.success) {
+                cachedMohistVersions = result.versions;
+            } else {
+                showNotification(`Mohistバージョンリストの取得に失敗しました: ${result.error}`, 'error');
+                return [];
+            }
+        }
+        return cachedMohistVersions;
+    }
 
     async function updateLoaderVersions() {
         const type = document.querySelector('input[name="server-type"]:checked').value;
-        const mcVersion = versionSelect.value;
+        const mcVersion = versionSelect.value; // 現在選択されているMinecraftバージョン
 
         // ラベルの更新
         const loaderLabel = document.getElementById('loader-label');
@@ -451,10 +462,50 @@ export function setupDomListeners() {
             else if (type === 'fabric') loaderLabel.textContent = 'Fabric Loader バージョン';
             else if (type === 'quilt') loaderLabel.textContent = 'Quilt Loader バージョン';
             else if (type === 'neoforge') loaderLabel.textContent = 'NeoForge バージョン';
+            else if (type === 'mohist') loaderLabel.textContent = 'Mohist ビルド';
         }
 
-        if (type === 'vanilla') {
+        if (type === 'vanilla' || type === 'paper') {
             if (loaderContainer) loaderContainer.classList.add('hidden');
+            return;
+        }
+
+        // Mohistの場合はloaderContainerを表示
+        if (type === 'mohist') {
+            if (loaderContainer) loaderContainer.classList.remove('hidden');
+            if (loaderSelect) loaderSelect.innerHTML = '<option>ビルドを読み込み中...</option>';
+
+            if (!mcVersion) {
+                loaderSelect.innerHTML = '<option value="">Minecraftバージョンを選択してください</option>';
+                return;
+            }
+
+            let builds = cachedMohistBuilds.get(mcVersion);
+            if (!builds) {
+                const result = await window.electronAPI.getMohistBuilds(mcVersion);
+                if (result.success) {
+                    builds = result.builds;
+                    cachedMohistBuilds.set(mcVersion, builds);
+                } else {
+                    if (loaderSelect) loaderSelect.innerHTML = '<option>取得失敗</option>';
+                    showNotification(`Mohistビルドの取得に失敗しました: ${result.error}`, 'error');
+                    return;
+                }
+            }
+
+            if (loaderSelect) {
+                loaderSelect.innerHTML = '';
+                if (builds.length > 0) {
+                    builds.forEach(build => {
+                        const opt = document.createElement('option');
+                        opt.value = build.id;
+                        opt.textContent = `Build #${build.id} (${build.build_date.substring(0, 10)})`;
+                        loaderSelect.appendChild(opt);
+                    });
+                } else {
+                    loaderSelect.innerHTML = '<option value="">利用可能なビルドがありません</option>';
+                }
+            }
             return;
         }
 
@@ -581,7 +632,32 @@ export function setupDomListeners() {
     }
 
     serverTypeRadios.forEach(radio => {
-        radio.addEventListener('change', updateLoaderVersions);
+        radio.addEventListener('change', async () => {
+            const serverType = radio.value;
+            const versionSelect = document.getElementById('version-select');
+            versionSelect.innerHTML = '<option>バージョンを読み込み中...</option>';
+
+            if (serverType === 'mohist') {
+                const versions = await updateMcVersionsForMohist();
+                versionSelect.innerHTML = '';
+                if (versions.length > 0) {
+                    versions.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v.name;
+                        opt.textContent = v.name;
+                        versionSelect.appendChild(opt);
+                    });
+                    // 最初のバージョンを選択した状態でビルドリストを更新
+                    versionSelect.dispatchEvent(new Event('change'));
+                } else {
+                    versionSelect.innerHTML = '<option value="">利用可能なバージョンがありません</option>';
+                }
+            } else {
+                // 他のサーバータイプの場合は既存のロジックを呼び出す
+                window.electronAPI.getMinecraftVersions();
+            }
+            updateLoaderVersions();
+        });
     });
 
     if (versionSelect) {
@@ -606,7 +682,7 @@ export function setupDomListeners() {
                 return;
             }
 
-            if (serverType !== 'vanilla' && !loaderVersion) {
+            if (serverType !== 'vanilla' && serverType !== 'paper' && serverType !== 'mohist' && !loaderVersion) {
                 showNotification('Modローダーのバージョンが選択されていません。', 'error');
                 return;
             }

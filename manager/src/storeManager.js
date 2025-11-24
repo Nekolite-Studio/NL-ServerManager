@@ -32,6 +32,18 @@ const schema = {
             x: undefined,
             y: undefined
         }
+    },
+    apiCache: {
+        type: 'object',
+        default: {},
+        additionalProperties: { // 動的なキー（APIエンドポイントなど）を許可
+            type: 'object',
+            properties: {
+                timestamp: { type: 'number' },
+                data: {} // 任意のデータ型を許可
+            },
+            required: ['timestamp', 'data']
+        }
     }
 };
 
@@ -120,4 +132,22 @@ export {
     setAgents,
     getWindowBounds,
     setWindowBounds,
+    getApiCache,
+    setApiCache,
 };
+
+/**
+ * 保存されているAPIキャッシュ全体を取得する
+ * @returns {object} - APIキャッシュオブジェクト
+ */
+function getApiCache() {
+    return store.get('apiCache');
+}
+
+/**
+ * APIキャッシュを保存する（全体を上書き）
+ * @param {object} cache - 保存するAPIキャッシュオブジェクト
+ */
+function setApiCache(cache) {
+    store.set('apiCache', cache);
+}

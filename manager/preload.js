@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFabricVersions: () => ipcRenderer.invoke('get-fabric-versions'),
   getQuiltVersions: () => ipcRenderer.invoke('get-quilt-versions'),
   getNeoForgeVersions: (mcVersion) => ipcRenderer.invoke('get-neoforge-versions', { mcVersion }),
+  getMohistVersions: () => ipcRenderer.invoke('get-mohist-versions'),
+  getMohistBuilds: (mcVersion) => ipcRenderer.invoke('get-mohist-builds', { mcVersion }),
 
   // Agent Management
   addAgent: (config) => ipcRenderer.invoke('add-agent', config),

@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ServerStatus, Message } from '@nl-server-manager/common/protocol.js';
 import { ServerPropertiesSchema } from '@nl-server-manager/common/property-schema.js';
 import { loadJsonSync, saveJsonSync, resolvePath, readJson, writeJson } from '../utils/storage.js';
-import { getJsonFromUrl, downloadFile } from './fileService.js';
+import { downloadFile } from './fileService.js';
 import { resolveJavaExecutable } from './javaService.js';
 
 const SERVER_CONFIG_FILENAME = 'nl-server_manager.json';
@@ -16,8 +16,8 @@ const servers = new Map();
 
 /**
  * デフォルトのサーバー設定を返す
- * @param {string} serverId 
- * @param {string} serverName 
+ * @param {string} serverId
+ * @param {string} serverName
  * @returns {object}
  */
 function getDefaultServerConfig(serverId, serverName, runtimeConfig = {}) {
@@ -69,128 +69,6 @@ function getMaxMemoryFromConfig(serverConfig) {
         }
     }
     return 0; // 不明な場合は0
-}
-
-/**
- * Forgeサーバーをインストールする
- * @param {string} serverDir
- * @param {string} mcVersion
- * @param {string} forgeVersion
- * @param {string} javaExecutable
- * @param {function} onProgress
- */
-async function installForgeServer(serverDir, mcVersion, forgeVersion, javaExecutable, onProgress) {
-    const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVersion}/forge-${mcVersion}-${forgeVersion}-installer.jar`;
-    const installerPath = path.join(serverDir, 'installer.jar');
-
-    console.log(`[ServerManager] Downloading Forge Installer from ${installerUrl}`);
-    onProgress({ status: 'downloading', message: 'Forgeインストーラーをダウンロード中...', progress: 0 });
-
-    await downloadFile(installerUrl, installerPath, (p) => {
-        onProgress({ status: 'downloading', message: `Forgeインストーラーをダウンロード中... ${p}%`, progress: p });
-    });
-
-    onProgress({ status: 'installing', message: 'Forgeサーバーをインストール中 (これには時間がかかります)...', progress: 0 });
-    console.log(`[ServerManager] Running Forge Installer...`);
-
-    return runInstaller(serverDir, javaExecutable, 'installer.jar', ['--installServer']);
-}
-
-/**
- * NeoForgeサーバーをインストールする
- * @param {string} serverDir
- * @param {string} neoVersion
- * @param {string} javaExecutable
- * @param {function} onProgress
- */
-async function installNeoForgeServer(serverDir, neoVersion, javaExecutable, onProgress) {
-    const installerUrl = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${neoVersion}/neoforge-${neoVersion}-installer.jar`;
-    const installerPath = path.join(serverDir, 'installer.jar');
-
-    console.log(`[ServerManager] Downloading NeoForge Installer from ${installerUrl}`);
-    onProgress({ status: 'downloading', message: 'NeoForgeインストーラーをダウンロード中...', progress: 0 });
-
-    await downloadFile(installerUrl, installerPath, (p) => {
-        onProgress({ status: 'downloading', message: `NeoForgeインストーラーをダウンロード中... ${p}%`, progress: p });
-    });
-
-    onProgress({ status: 'installing', message: 'NeoForgeサーバーをインストール中 (これには時間がかかります)...', progress: 0 });
-    console.log(`[ServerManager] Running NeoForge Installer...`);
-
-    return runInstaller(serverDir, javaExecutable, 'installer.jar', ['--installServer']);
-}
-
-/**
- * Fabricサーバーをインストールする
- * @param {string} serverDir
- * @param {string} mcVersion
- * @param {string} loaderVersion
- * @param {string} javaExecutable
- * @param {function} onProgress
- */
-async function installFabricServer(serverDir, mcVersion, loaderVersion, javaExecutable, onProgress) {
-    // 安定版として 1.0.1 を使用 (APIから取得するのが理想だが、ガイドに従い固定または最新を使用)
-    // ガイドでは 1.0.0 とあるが、最新のインストーラーを使用するのが一般的
-    const installerVersion = '1.0.1';
-    const installerUrl = `https://maven.fabricmc.net/net/fabricmc/fabric-installer/${installerVersion}/fabric-installer-${installerVersion}.jar`;
-    const installerPath = path.join(serverDir, 'fabric-installer.jar');
-
-    console.log(`[ServerManager] Downloading Fabric Installer from ${installerUrl}`);
-    onProgress({ status: 'downloading', message: 'Fabricインストーラーをダウンロード中...', progress: 0 });
-
-    await downloadFile(installerUrl, installerPath, (p) => {
-        onProgress({ status: 'downloading', message: `Fabricインストーラーをダウンロード中... ${p}%`, progress: p });
-    });
-
-    onProgress({ status: 'installing', message: 'Fabricサーバーをインストール中...', progress: 0 });
-    console.log(`[ServerManager] Running Fabric Installer...`);
-
-    // java -jar fabric-installer.jar server -mcversion [MC_VER] -loader [LOADER_VER] -downloadMinecraft
-    const args = [
-        'server',
-        '-mcversion', mcVersion,
-        '-loader', loaderVersion,
-        '-downloadMinecraft'
-    ];
-
-    return runInstaller(serverDir, javaExecutable, 'fabric-installer.jar', args);
-}
-
-/**
- * Quiltサーバーをインストールする
- * @param {string} serverDir
- * @param {string} mcVersion
- * @param {string} loaderVersion
- * @param {string} javaExecutable
- * @param {function} onProgress
- */
-async function installQuiltServer(serverDir, mcVersion, loaderVersion, javaExecutable, onProgress) {
-    // ガイドに従い 0.9.1 を使用
-    const installerVersion = '0.9.1';
-    const installerUrl = `https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/${installerVersion}/quilt-installer-${installerVersion}.jar`;
-    const installerPath = path.join(serverDir, 'quilt-installer.jar');
-
-    console.log(`[ServerManager] Downloading Quilt Installer from ${installerUrl}`);
-    onProgress({ status: 'downloading', message: 'Quiltインストーラーをダウンロード中...', progress: 0 });
-
-    await downloadFile(installerUrl, installerPath, (p) => {
-        onProgress({ status: 'downloading', message: `Quiltインストーラーをダウンロード中... ${p}%`, progress: p });
-    });
-
-    onProgress({ status: 'installing', message: 'Quiltサーバーをインストール中...', progress: 0 });
-    console.log(`[ServerManager] Running Quilt Installer...`);
-
-    // java -jar quilt-installer.jar install server [MC_VER] [LOADER_VER] --download-server
-    // ヘルプメッセージ: quilt-installer install server <minecraft-version> [<loader-version>] [SERVER-INSTALL-OPTIONS]
-    const args = [
-        'install',
-        'server',
-        mcVersion,
-        loaderVersion,
-        '--download-server'
-    ];
-
-    return runInstaller(serverDir, javaExecutable, 'quilt-installer.jar', args);
 }
 
 /**
@@ -328,7 +206,7 @@ export function getAllServers() {
  * @returns {object | null} - 更新/作成後のサーバー設定オブジェクト、または失敗した場合はnull
  */
 export async function createServer(serversDirectory, serverConfig, onProgress = () => { }) {
-    const { versionId, serverType, loaderVersion, runtime, ...restConfig } = serverConfig;
+    const { versionId, serverType, loaderVersion, runtime, downloadUrl, ...restConfig } = serverConfig;
     const id = uuidv4();
     const serverDir = path.join(serversDirectory, id);
     const configPath = path.join(serverDir, SERVER_CONFIG_FILENAME);
@@ -360,42 +238,55 @@ export async function createServer(serversDirectory, serverConfig, onProgress = 
         // Javaパスを解決する (Modサーバーのインストールに必要)
         const javaExecutable = resolveJavaExecutable(runtime);
 
-        if (serverType === 'forge') {
-            if (!loaderVersion) throw new Error('Forge version (loaderVersion) is required for Forge servers.');
-            await installForgeServer(serverDir, versionId, loaderVersion, javaExecutable, onProgress);
-        } else if (serverType === 'neoforge') {
-            if (!loaderVersion) throw new Error('NeoForge version (loaderVersion) is required for NeoForge servers.');
-            await installNeoForgeServer(serverDir, loaderVersion, javaExecutable, onProgress);
-        } else if (serverType === 'fabric') {
-            if (!loaderVersion) throw new Error('Fabric Loader version is required for Fabric servers.');
-            await installFabricServer(serverDir, versionId, loaderVersion, javaExecutable, onProgress);
-        } else if (serverType === 'quilt') {
-            if (!loaderVersion) throw new Error('Quilt Loader version is required for Quilt servers.');
-            await installQuiltServer(serverDir, versionId, loaderVersion, javaExecutable, onProgress);
-        } else {
-            // Vanilla (Default)
-            console.log(`[ServerManager] versionId specified: ${versionId}. Starting download process.`);
-            const manifest = await getJsonFromUrl('https://launchermeta.mojang.com/mc/game/version_manifest.json');
-            const versionInfo = manifest.versions.find(v => v.id === versionId);
-            if (!versionInfo) {
-                throw new Error(`Version ${versionId} not found in version manifest.`);
+        if (serverType === 'forge' || serverType === 'neoforge' || serverType === 'fabric' || serverType === 'quilt') {
+            if (!downloadUrl) throw new Error(`${serverType} installer download URL is required.`);
+            
+            let installerFileName;
+            let installerArgs = [];
+            if (serverType === 'forge') {
+                installerFileName = `forge-${versionId}-${loaderVersion}-installer.jar`;
+                installerArgs = ['--installServer'];
+            } else if (serverType === 'neoforge') {
+                installerFileName = `neoforge-${loaderVersion}-installer.jar`;
+                installerArgs = ['--installServer'];
+            } else if (serverType === 'fabric') {
+                installerFileName = `fabric-installer-1.0.1.jar`; // 固定値
+                installerArgs = ['server', '-mcversion', versionId, '-loader', loaderVersion, '-downloadMinecraft'];
+            } else if (serverType === 'quilt') {
+                installerFileName = `quilt-installer-0.9.1.jar`; // 固定値
+                installerArgs = ['install', 'server', versionId, loaderVersion, '--download-server'];
             }
-            const versionDetails = await getJsonFromUrl(versionInfo.url);
-            const serverJarUrl = versionDetails.downloads?.server?.url;
-            if (!serverJarUrl) {
-                throw new Error(`Server JAR download URL not found for version ${versionId}.`);
-            }
-            const destPath = path.join(serverDir, 'server.jar');
-            console.log(`[ServerManager] Downloading server.jar for version ${versionId} from ${serverJarUrl} to ${destPath}`);
 
-            onProgress({ status: 'downloading', message: `サーバーJAR (v${versionId}) をダウンロード中...`, progress: 0 });
-            await downloadFile(serverJarUrl, destPath, (progress) => {
-                onProgress({ status: 'downloading', message: `サーバーJARをダウンロード中... ${progress}%`, progress });
+            const installerPath = path.join(serverDir, installerFileName);
+
+            console.log(`[ServerManager] Downloading ${serverType} Installer from ${downloadUrl}`);
+            onProgress({ status: 'downloading', message: `${serverType}インストーラーをダウンロード中...`, progress: 0 });
+
+            await downloadFile(downloadUrl, installerPath, (p) => {
+                onProgress({ status: 'downloading', message: `${serverType}インストーラーをダウンロード中... ${p}%`, progress: p });
+            });
+
+            onProgress({ status: 'installing', message: `${serverType}サーバーをインストール中 (これには時間がかかります)...`, progress: 0 });
+            console.log(`[ServerManager] Running ${serverType} Installer...`);
+
+            await runInstaller(serverDir, javaExecutable, installerFileName, installerArgs);
+
+        } else if (serverType === 'paper' || serverType === 'mohist' || serverType === 'vanilla') {
+            if (!downloadUrl) throw new Error(`${serverType} server JAR download URL is required.`);
+
+            const destPath = path.join(serverDir, 'server.jar');
+            console.log(`[ServerManager] Downloading ${serverType} from ${downloadUrl}`);
+            onProgress({ status: 'downloading', message: `${serverType}サーバーJARをダウンロード中...`, progress: 0 });
+
+            await downloadFile(downloadUrl, destPath, (p) => {
+                onProgress({ status: 'downloading', message: `${serverType}をダウンロード中... ${p}%`, progress: p });
             });
             onProgress({ status: 'downloaded', message: 'ダウンロード完了', progress: 100 });
-
-            console.log(`[ServerManager] Successfully downloaded server.jar.`);
+            console.log(`[ServerManager] Successfully downloaded ${serverType} server.jar.`);
+        } else {
+            throw new Error(`Unsupported server type: ${serverType}`);
         }
+
     } catch (error) {
         console.error(`[ServerManager] Failed to create server for version ${versionId}:`, error);
         fs.rmSync(serverDir, { recursive: true, force: true });
@@ -479,8 +370,8 @@ export async function updateServer(serversDirectory, serverId, serverConfig) {
 
 /**
  * サーバーを削除する
- * @param {string} serversDirectory 
- * @param {string} serverId 
+ * @param {string} serversDirectory
+ * @param {string} serverId
  * @returns {boolean}
  */
 export async function deleteServer(serversDirectory, serverId) {

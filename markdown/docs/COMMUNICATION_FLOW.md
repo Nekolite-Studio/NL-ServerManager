@@ -19,7 +19,41 @@
 
 ## 3. 主要な通信フロー
 
-### フロー1: ManagerからAgentへの操作要求 (例: サーバー削除)
+### フロー1: ManagerからAgentへのサーバー作成要求 (ダウンロードURL解決を含む)
+
+ユーザーがUIでサーバー作成を要求した際の通信フローです。Managerが外部APIからダウンロードURLを解決し、Agentに伝達します。
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Manager_UI as レンダラー (UI)
+    participant Manager_Main as Manager (メイン)
+    participant Agent
+
+    User->>Manager_UI: サーバー作成を要求 (タイプ、バージョン選択)
+    note right of Manager_UI: サーバータイプに応じて<br>異なるバージョン取得APIを呼び出す
+    Manager_UI->>Manager_Main: IPC: proxyToAgent(agentId, {type: Message.CREATE_SERVER, payload: {versionId, serverType, loaderVersion, runtime, ...}})
+    
+    Manager_Main->>Manager_Main: externalApiServiceでAPIを呼び出し、<br>ダウンロードURLを取得 (キャッシュ利用)
+    
+    Manager_Main->>Agent: WebSocket: {type: Message.CREATE_SERVER, requestId, payload: {versionId, serverType, loaderVersion, runtime, downloadUrl, ...}}
+    
+    Agent->>Agent: 受け取ったdownloadUrlから<br>server.jarをダウンロード
+    Agent->>Agent: サーバーファイルを設定
+    
+    Agent-->>Manager_Main: WebSocket: {type: Message.OPERATION_RESULT, requestId, success: true}
+    Manager_Main-->>Manager_UI: IPC: 作成完了を通知
+    Manager_UI->>User: UIに反映
+```
+
+1.  **UI → Main (IPC):** レンダラープロセスは、[`preload.js`](manager/preload.js:1)を介して`proxy-to-agent`チャネルに`Message.CREATE_SERVER`メッセージを送信します。このメッセージには、ユーザーが選択したサーバータイプ、Minecraftバージョン、ローダーバージョンなどが含まれます。UI側では、選択されたサーバータイプ（例: Mohist）に応じて、対応するバージョンリスト取得API（例: `getMohistVersions`）を呼び出し、ドロップダウンを動的に構築します。
+2.  **MainプロセスでのダウンロードURL解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバーJARまたはインストーラーのダウンロードURLを外部APIから取得します。この際、`externalApiService`はキャッシュを利用してAPI呼び出しを最適化します。
+3.  **Main → Agent (WebSocket):** メインプロセスは、取得した`downloadUrl`を`Message.CREATE_SERVER`メッセージの`payload`に含め、`requestId`を付与して対象の`Agent`にWebSocketで送信します。
+4.  **Agentでのダウンロードと設定:** `Agent`は`downloadUrl`を受け取り、そのURLからサーバーJARまたはインストーラーをダウンロードし、適切な場所に配置します。
+5.  **Agent → Main (WebSocket):** `Agent`はサーバー作成処理が完了した後、`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。
+6.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルでUIに通知し、UIは作成完了をユーザーに表示します。
+
+### フロー2: ManagerからAgentへの操作要求 (例: サーバー削除)
 
 ユーザーがUIでサーバー削除ボタンをクリックした際の通信フローです。
 
@@ -48,7 +82,7 @@ sequenceDiagram
 3.  **Agent → Main (WebSocket):** `Agent`は処理完了後、`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。
 4.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルでUIに通知します。
 
-### フロー2: AgentからManagerへの自発的な状態更新 (ブロードキャスト)
+### フロー3: AgentからManagerへの自発的な状態更新 (ブロードキャスト)
 
 `Agent`側でのサーバー作成や削除が完了し、全Managerのサーバーリストを更新する必要がある場合のフローです。
 

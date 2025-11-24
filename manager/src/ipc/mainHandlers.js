@@ -58,7 +58,27 @@ export function setupIpcHandlers(mainWindow) {
     });
 
     // Agentにメッセージをプロキシする汎用ハンドラ
-    ipcMain.on('proxy-to-agent', (event, { agentId, message }) => {
+    ipcMain.on('proxy-to-agent', async (event, { agentId, message }) => {
+        if (message.type === 'create-server') {
+            try {
+                // externalApiServiceからdownloadUrlを取得し、メッセージに追加
+                const downloadUrl = await externalApiService.getDownloadUrlForServerType(
+                    message.payload.serverType || 'vanilla',
+                    message.payload.versionId,
+                    message.payload.loaderVersion
+                );
+                message.payload.downloadUrl = downloadUrl;
+            } catch (error) {
+                console.error(`Failed to get download URL for server creation: ${error.message}`);
+                // エラーをRendererプロセスに返す
+                event.sender.send('operation-result', {
+                    requestId: message.requestId,
+                    success: false,
+                    error: { message: `サーバーJARのダウンロードURL取得に失敗しました: ${error.message}` }
+                });
+                return;
+            }
+        }
         agentManager.proxyToAgent(agentId, message);
     });
 
@@ -120,5 +140,20 @@ export function setupIpcHandlers(mainWindow) {
     // NeoForge Version Handling
     ipcMain.handle('get-neoforge-versions', async (event, { mcVersion }) => {
         return await externalApiService.getNeoForgeVersions(mcVersion);
+    });
+
+    // Paper Version Handling
+    ipcMain.handle('get-paper-versions', async (event) => {
+        return await externalApiService.getPaperVersions();
+    });
+
+    // Mohist Version Handling
+    ipcMain.handle('get-mohist-versions', async (event) => {
+        return await externalApiService.getMohistVersions();
+    });
+
+    // Mohist Build Handling
+    ipcMain.handle('get-mohist-builds', async (event, { mcVersion }) => {
+        return await externalApiService.getMohistBuilds(mcVersion);
     });
 }

@@ -66,7 +66,7 @@ graph TD
 -   **`src/services/agentManager.js`:** 全ての`agent`とのWebSocket接続を確立・維持・再接続する。UIからの要求に応じてAgentの動的な追加・削除を行い、Agentリストの管理と永続化も担当する。
 -   **`src/ipc/mainHandlers.js`:** RendererプロセスからのIPC要求を受け取り、適切なサービス（AgentManagerやExternalApiService）に処理を委譲する。
 -   **`src/storeManager.js`:** `electron-store`を利用して、登録済みAgentリストやウィンドウサイズをディスクに保存する。**スキーマ検証を伴う堅牢な設定管理**を行い、設定破損時にはユーザーに通知し、バックアップと復旧オプションを提供する。
--   **`src/services/externalApiService.js`:** Mojang（バージョン情報）やAdoptium（Javaダウンロード情報）などの外部APIとの通信を担当する。**HTTPクライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。
+-   **`src/services/externalApiService.js`:** Mojang（バージョン情報）やAdoptium（Javaダウンロード情報）などの外部APIとの通信、およびサーバーJARのダウンロードURL解決を担当する。**HTTPクライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。また、**取得したAPI応答を`electron-store`を利用してキャッシュし、外部APIへのリクエスト数を削減する。**
 -   **`src/services/propertyAnnotations.js`:** `server.properties` のUI表示用メタデータ（説明文、グループ分け、入力タイプなど）を提供する。`@nl-server-manager/common` のZodスキーマから動的に生成される。
 
 #### Rendererプロセス (UI)
@@ -90,6 +90,7 @@ graph TD
         -   **ゲームサーバー:** RCON経由でサーバーに接続し、TPSやプレイヤー数を取得する。
         -   **物理サーバー:** `systeminformation`ライブラリを利用し、ホストマシンのCPU、RAM、Disk使用率をリアルタイムで収集する。
     -   **Javaパス解決:** `java_path`または`java_version`に基づいて、インストールされたJava実行ファイルを正確に特定するロジックを実装。
+    -   **サーバーJARダウンロード:** Managerから提供されたURLを使用して、サーバーJARファイルをダウンロードする。
 -   **`settingsManager.js` (設定管理):** `agent`自体の設定（APIポート、サーバーディレクトリなど）を管理する。ファイルが存在しない場合はデフォルト値で自動生成される。
 
 ## 3. データフローの原則

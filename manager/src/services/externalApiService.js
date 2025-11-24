@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { getApiCache, setApiCache } from '../storeManager.js';
+
+const CACHE_EXPIRATION_HOURS = 24; // キャッシュ有効期限 (時間)
 
 // --- Java Version Detection ---
 const MANIFEST_URL_V2 = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
@@ -21,18 +24,25 @@ function detectJavaByDate(date) {
  * @returns {Promise<number>}
  */
 async function getRequiredJavaVersion(mcVersion) {
+    const cacheKey = `javaVersion-${mcVersion}`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
     const manifest = (await axios.get(MANIFEST_URL_V2)).data;
     const entry = manifest.versions.find(v => v.id === mcVersion);
     if (!entry) throw new Error(`Version not found in manifest: ${mcVersion}`);
 
     const versionJson = (await axios.get(entry.url)).data;
 
+    let javaVersion;
     if (versionJson.javaVersion && versionJson.javaVersion.majorVersion) {
-        return versionJson.javaVersion.majorVersion;
+        javaVersion = versionJson.javaVersion.majorVersion;
+    } else {
+        const releaseTime = new Date(entry.releaseTime);
+        javaVersion = detectJavaByDate(releaseTime);
     }
-
-    const releaseTime = new Date(entry.releaseTime);
-    return detectJavaByDate(releaseTime);
+    setCachedData(cacheKey, javaVersion);
+    return javaVersion;
 }
 
 /**
@@ -43,6 +53,10 @@ async function getRequiredJavaVersion(mcVersion) {
  * @returns {Promise<{success: boolean, downloadLink?: string, fileSize?: number, error?: string}>}
  */
 async function getJavaDownloadInfo(feature_version, os, arch) {
+    const cacheKey = `javaDownloadInfo-${feature_version}-${os}-${arch}`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
         const jvm_impl = 'hotspot';
         const image_type = 'jdk';
@@ -64,14 +78,20 @@ async function getJavaDownloadInfo(feature_version, os, arch) {
             const downloadLink = release.binary.package.link;
             const fileSize = release.binary.package.size;
             console.log(`Java Download Info: URL=${downloadLink}, Size=${fileSize}`);
-            return { success: true, downloadLink, fileSize };
+            const result = { success: true, downloadLink, fileSize };
+            setCachedData(cacheKey, result);
+            return result;
         } else {
             console.warn('No download link or file size found in Adoptium API response.');
-            return { success: false, error: 'Download information not found.' };
+            const result = { success: false, error: 'Download information not found.' };
+            setCachedData(cacheKey, result); // エラーでもキャッシュする
+            return result;
         }
     } catch (error) {
         console.error('Error fetching Java download info from Adoptium API:', error);
-        return { success: false, error: error.message };
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
     }
 }
 
@@ -80,9 +100,15 @@ async function getJavaDownloadInfo(feature_version, os, arch) {
  * @returns {Promise<Array>}
  */
 async function fetchMinecraftVersions() {
+    const cacheKey = `minecraftVersions`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
         const response = await axios.get('https://launchermeta.mojang.com/mc/game/version_manifest.json');
-        return response.data.versions;
+        const versions = response.data.versions;
+        setCachedData(cacheKey, versions);
+        return versions;
     } catch (error) {
         console.error('Failed to fetch Minecraft versions with axios:', error);
         // エラーを呼び出し元に伝播させる
@@ -95,12 +121,20 @@ async function fetchMinecraftVersions() {
  * @returns {Promise<{success: boolean, promotions?: object, error?: string}>}
  */
 async function getForgeVersions() {
+    const cacheKey = `forgeVersions`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
         const response = await axios.get('https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json');
-        return { success: true, promotions: response.data.promos };
+        const result = { success: true, promotions: response.data.promos };
+        setCachedData(cacheKey, result);
+        return result;
     } catch (error) {
         console.error('Failed to fetch Forge versions:', error);
-        return { success: false, error: error.message };
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
     }
 }
 
@@ -109,12 +143,20 @@ async function getForgeVersions() {
  * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
  */
 async function getFabricVersions() {
+    const cacheKey = `fabricVersions`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
         const response = await axios.get('https://meta.fabricmc.net/v2/versions/loader');
-        return { success: true, versions: response.data };
+        const result = { success: true, versions: response.data };
+        setCachedData(cacheKey, result);
+        return result;
     } catch (error) {
         console.error('Failed to fetch Fabric versions:', error);
-        return { success: false, error: error.message };
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
     }
 }
 
@@ -123,12 +165,20 @@ async function getFabricVersions() {
  * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
  */
 async function getQuiltVersions() {
+    const cacheKey = `quiltVersions`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
         const response = await axios.get('https://meta.quiltmc.org/v3/versions/loader');
-        return { success: true, versions: response.data };
+        const result = { success: true, versions: response.data };
+        setCachedData(cacheKey, result);
+        return result;
     } catch (error) {
         console.error('Failed to fetch Quilt versions:', error);
-        return { success: false, error: error.message };
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
     }
 }
 
@@ -138,6 +188,10 @@ async function getQuiltVersions() {
  * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
  */
 async function getNeoForgeVersions(mcVersion) {
+    const cacheKey = `neoForgeVersions-${mcVersion}`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
         const response = await axios.get('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml');
         const xmlData = response.data;
@@ -211,11 +265,99 @@ async function getNeoForgeVersions(mcVersion) {
             return 0;
         });
 
-        return { success: true, versions: filteredVersions };
+        const result = { success: true, versions: filteredVersions };
+        setCachedData(cacheKey, result);
+        return result;
 
     } catch (error) {
         console.error('Failed to fetch NeoForge versions:', error);
-        return { success: false, error: error.message };
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
+    }
+}
+
+/**
+ * Paperのバージョン情報を取得する
+ * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
+ */
+async function getPaperVersions() {
+    const cacheKey = `paperVersions`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
+    try {
+        const response = await axios.get('https://api.papermc.io/v2/projects/paper');
+        // versionsは昇順(古い順)で来るため、降順(新しい順)にソートする
+        const versions = response.data.versions.reverse();
+        const result = { success: true, versions };
+        setCachedData(cacheKey, result);
+        return result;
+    } catch (error) {
+        console.error('Failed to fetch Paper versions:', error);
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
+    }
+}
+
+/**
+ * Mohistのバージョン情報を取得する
+ * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
+ */
+async function getMohistVersions() {
+    const cacheKey = `mohistVersions`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
+    try {
+        const response = await axios.get('https://api.mohistmc.com/project/mohist/versions');
+        // Mohist APIは {name: "1.X.X"} 形式でバージョンを返す。
+        // バージョン番号で降順にソートする
+        const versions = response.data.sort((a, b) => {
+            const partsA = a.name.split('.').map(Number);
+            const partsB = b.name.split('.').map(Number);
+            for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+                const valA = partsA[i] || 0;
+                const valB = partsB[i] || 0;
+                if (valA > valB) return -1;
+                if (valA < valB) return 1;
+            }
+            return 0;
+        });
+        const result = { success: true, versions };
+        setCachedData(cacheKey, result);
+        return result;
+    } catch (error) {
+        console.error('Failed to fetch Mohist versions:', error);
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
+    }
+}
+
+/**
+ * Mohistのビルド情報を取得する
+ * @param {string} mcVersion - MinecraftのバージョンID (例: '1.12.2')
+ * @returns {Promise<{success: boolean, builds?: Array, error?: string}>}
+ */
+async function getMohistBuilds(mcVersion) {
+    const cacheKey = `mohistBuilds-${mcVersion}`;
+    const cachedData = getCachedData(cacheKey);
+    if (cachedData) return cachedData;
+
+    try {
+        const response = await axios.get(`https://api.mohistmc.com/project/mohist/${mcVersion}/builds`);
+        // ビルドはIDの昇順(古い順)で来るため、IDの降順(新しい順)���ソートする
+        const builds = response.data.sort((a, b) => b.id - a.id);
+        const result = { success: true, builds };
+        setCachedData(cacheKey, result);
+        return result;
+    } catch (error) {
+        console.error(`Failed to fetch Mohist builds for ${mcVersion}:`, error);
+        const result = { success: false, error: error.message };
+        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        return result;
     }
 }
 
@@ -226,5 +368,141 @@ export {
     getForgeVersions,
     getFabricVersions,
     getQuiltVersions,
-    getNeoForgeVersions
+    getNeoForgeVersions,
+    getPaperVersions,
+    getMohistVersions,
+    getMohistBuilds, // 新しく追加
+    getDownloadUrlForServerType
 };
+
+/**
+ * キャッシュからデータを取得する
+ * @param {string} key - キャッシュキー
+ * @returns {any | null} - キャッシュデータ、またはnull
+ */
+function getCachedData(key) {
+    const cache = getApiCache();
+    const entry = cache[key];
+    if (entry && (Date.now() - entry.timestamp) < CACHE_EXPIRATION_HOURS * 60 * 60 * 1000) {
+        console.log(`[externalApiService] Cache hit for ${key}`);
+        return entry.data;
+    }
+    console.log(`[externalApiService] Cache miss or expired for ${key}`);
+    return null;
+}
+
+/**
+ * データをキャッシュに保存する
+ * @param {string} key - キャッシュキー
+ * @param {any} data - 保存するデータ
+ */
+function setCachedData(key, data) {
+    const cache = getApiCache();
+    cache[key] = {
+        timestamp: Date.now(),
+        data: data
+    };
+    setApiCache(cache);
+    console.log(`[externalApiService] Data cached for ${key}`);
+}
+
+/**
+ * 指定されたサーバータイプとバージョンに基づいて、ダウンロードURLを取得する
+ * @param {string} serverType - サーバータイプ ('vanilla', 'forge', 'fabric', 'quilt', 'neoforge', 'paper', 'mohist')
+ * @param {string} versionId - MinecraftのバージョンID (例: '1.20.4')
+ * @param {string} [loaderVersion] - ModローダーのバージョンID (Forge, Fabric, Quilt, NeoForgeの場合)
+ * @returns {Promise<string>} ダウンロードURL
+ * @throws {Error} 指定されたサーバータイプやバージョンに対応するダウンロードURLが見つからない場合
+ */
+async function getDownloadUrlForServerType(serverType, versionId, loaderVersion) {
+    const cacheKey = `downloadUrl-${serverType}-${versionId}-${loaderVersion || ''}`;
+    const cachedUrl = getCachedData(cacheKey);
+    if (cachedUrl) {
+        return cachedUrl;
+    }
+
+    let downloadUrl;
+    switch (serverType) {
+        case 'vanilla':
+            const manifest = (await axios.get('https://launchermeta.mojang.com/mc/game/version_manifest.json')).data;
+            const versionInfo = manifest.versions.find(v => v.id === versionId);
+            if (!versionInfo) {
+                throw new Error(`Version ${versionId} not found in version manifest.`);
+            }
+            const versionDetails = (await axios.get(versionInfo.url)).data;
+            const serverJarUrl = versionDetails.downloads?.server?.url;
+            if (!serverJarUrl) {
+                throw new Error(`Server JAR download URL not found for version ${versionId}.`);
+            }
+            downloadUrl = serverJarUrl;
+            break;
+
+        case 'forge':
+            if (!loaderVersion) throw new Error('Forge version (loaderVersion) is required for Forge servers.');
+            downloadUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${versionId}-${loaderVersion}/forge-${versionId}-${loaderVersion}-installer.jar`;
+            break;
+
+        case 'neoforge':
+            if (!loaderVersion) throw new Error('NeoForge version (loaderVersion) is required for NeoForge servers.');
+            downloadUrl = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${loaderVersion}/neoforge-${loaderVersion}-installer.jar`;
+            break;
+
+        case 'fabric':
+            if (!loaderVersion) throw new Error('Fabric Loader version is required for Fabric servers.');
+            const fabricInstallerVersion = '1.0.1'; // ガイドに従い固定
+            downloadUrl = `https://maven.fabricmc.net/net/fabricmc/fabric-installer/${fabricInstallerVersion}/fabric-installer-${fabricInstallerVersion}.jar`;
+            break;
+
+        case 'quilt':
+            if (!loaderVersion) throw new Error('Quilt Loader version is required for Quilt servers.');
+            const quiltInstallerVersion = '0.9.1'; // ガイドに従い固定
+            downloadUrl = `https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/${quiltInstallerVersion}/quilt-installer-${quiltInstallerVersion}.jar`;
+            break;
+
+        case 'paper':
+            // 1. ビルド情報の取得
+            const buildsUrl = `https://api.papermc.io/v2/projects/paper/versions/${versionId}`;
+            const buildsData = (await axios.get(buildsUrl)).data;
+            
+            if (!buildsData.builds || buildsData.builds.length === 0) {
+                throw new Error(`No builds found for Paper version ${versionId}`);
+            }
+            const latestBuild = buildsData.builds[buildsData.builds.length - 1];
+
+            // 2. ファイル名の特定
+            const buildInfoUrl = `https://api.papermc.io/v2/projects/paper/versions/${versionId}/builds/${latestBuild}`;
+            const buildInfo = (await axios.get(buildInfoUrl)).data;
+            const fileName = buildInfo.downloads.application.name;
+            
+            if (!fileName) {
+                throw new Error(`Could not determine filename for Paper build ${latestBuild}`);
+            }
+            // 3. URLの構築
+            downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${versionId}/builds/${latestBuild}/downloads/${fileName}`;
+            break;
+
+        case 'mohist':
+            if (!loaderVersion) throw new Error('Mohist build ID (loaderVersion) is required for Mohist servers.');
+            
+            let buildId = loaderVersion;
+            // 'latest' が指定された場合、APIから最新のビルドIDを取得する
+            if (loaderVersion.toLowerCase() === 'latest') {
+                const buildsResponse = await getMohistBuilds(versionId);
+                if (buildsResponse.success && buildsResponse.builds.length > 0) {
+                    // getMohistBuildsは降順にソート済みなので、最初の要素が最新
+                    buildId = buildsResponse.builds.id;
+                } else {
+                    throw new Error(`Could not determine the latest build for Mohist ${versionId}.`);
+                }
+            }
+            
+            // 特定のビルドIDを指定してダウンロード
+            downloadUrl = `https://api.mohistmc.com/project/mohist/${versionId}/builds/${buildId}/download`;
+            break;
+
+        default:
+            throw new Error(`Unsupported server type: ${serverType}`);
+    }
+    setCachedData(cacheKey, downloadUrl);
+    return downloadUrl;
+}

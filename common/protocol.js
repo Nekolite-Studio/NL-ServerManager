@@ -7,7 +7,7 @@ export const Message = Object.freeze({
     // Manager -> Agent
     GET_SYSTEM_INFO: 'get-system-info',
     GET_ALL_SERVERS: 'get-all-servers',
-    CREATE_SERVER: 'create-server',
+    CREATE_SERVER: 'create-server', // payload: { versionId, serverName?, serverType?, loaderVersion?, runtime?, downloadUrl }
     UPDATE_SERVER: 'update-server',
     UPDATE_SERVER_PROPERTIES: 'update-server-properties',
     DELETE_SERVER: 'delete-server',
