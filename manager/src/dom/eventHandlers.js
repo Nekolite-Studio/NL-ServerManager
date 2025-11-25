@@ -345,9 +345,77 @@ export function setupDomListeners() {
     });
 
     if (addServerBtn) {
-        addServerBtn.addEventListener('click', async () => { // async を追加
+        addServerBtn.addEventListener('click', async () => {
             const hostSelect = document.getElementById('host-select');
             if (!hostSelect) return;
+
+            // --- 事前データ取得 ---
+            showNotification('サーバー情報を取得中...', 'info', 'fetching-versions', 3000);
+            const promises = [
+                window.electronAPI.getMinecraftVersions(), // Vanilla (fallback)
+                window.electronAPI.getForgeVersions(),
+                window.electronAPI.getFabricVersions(),
+                window.electronAPI.getQuiltVersions(),
+                window.electronAPI.getPaperVersions(),
+                window.electronAPI.getMohistVersions()
+            ];
+
+            const results = await Promise.allSettled(promises);
+
+            // 各Promiseの結果をインデックスで正しく参照する
+            const [
+                vanillaResult,
+                forgeResult,
+                fabricResult,
+                quiltResult,
+                paperResult,
+                mohistResult
+            ] = results;
+
+            // Vanilla (fulfilled and success)
+            if (vanillaResult.status === 'fulfilled' && vanillaResult.value.success) {
+                state.minecraftVersions = vanillaResult.value.versions;
+            } else {
+                console.error('Failed to pre-fetch Minecraft versions:', vanillaResult.reason || vanillaResult.value?.error);
+            }
+
+            // Forge
+            if (forgeResult.status === 'fulfilled' && forgeResult.value.success) {
+                cachedForgePromotions = forgeResult.value.promotions;
+            } else {
+                console.error('Failed to pre-fetch Forge versions:', forgeResult.reason || forgeResult.value?.error);
+            }
+
+            // Fabric
+            if (fabricResult.status === 'fulfilled' && fabricResult.value.success) {
+                cachedFabricVersions = fabricResult.value.versions;
+            } else {
+                console.error('Failed to pre-fetch Fabric versions:', fabricResult.reason || fabricResult.value?.error);
+            }
+
+            // Quilt
+            if (quiltResult.status === 'fulfilled' && quiltResult.value.success) {
+                cachedQuiltVersions = quiltResult.value.versions;
+            } else {
+                console.error('Failed to pre-fetch Quilt versions:', quiltResult.reason || quiltResult.value?.error);
+            }
+
+            // Paper
+            if (paperResult.status === 'fulfilled' && paperResult.value.success) {
+                cachedPaperVersions = paperResult.value.versions;
+            } else {
+                console.error('Failed to pre-fetch Paper versions:', paperResult.reason || paperResult.value?.error);
+            }
+
+            // Mohist
+            if (mohistResult.status === 'fulfilled' && mohistResult.value.success) {
+                cachedMohistVersions = mohistResult.value.versions;
+            } else {
+                console.error('Failed to pre-fetch Mohist versions:', mohistResult.reason || mohistResult.value?.error);
+            }
+            showNotification('サーバー情報の取得が完了しました', 'success', 'fetching-versions', 2000);
+            // --- 事前データ取得ここまで ---
+
 
             // ホスト選択のオプションをクリアして再生成
             hostSelect.innerHTML = '';
@@ -368,8 +436,9 @@ export function setupDomListeners() {
                 if (confirmCreateServerBtn) confirmCreateServerBtn.disabled = false;
             }
 
-            // サーバータイプに応じたバージョンリストの更新をトリガー
-            document.querySelector('input[name="server-type"]:checked').dispatchEvent(new Event('change', { bubbles: true }));
+            // UIを更新
+            updateVersionSelect();
+            updateLoaderVersions();
 
             if (createServerModal) createServerModal.classList.remove('hidden');
         });
@@ -435,6 +504,7 @@ export function setupDomListeners() {
     let cachedForgePromotions = null;
     let cachedFabricVersions = null;
     let cachedQuiltVersions = null;
+    let cachedPaperVersions = null; // Paperのバージョン/ビルド情報のキャッシュ
     let cachedMohistVersions = null; // MohistのMCバージョンリストのキャッシュ
     let cachedMohistBuilds = new Map(); // Mohistのビルドリストのキャッシュ (MCバージョンごとに)
 
@@ -462,15 +532,45 @@ export function setupDomListeners() {
             else if (type === 'fabric') loaderLabel.textContent = 'Fabric Loader バージョン';
             else if (type === 'quilt') loaderLabel.textContent = 'Quilt Loader バージョン';
             else if (type === 'neoforge') loaderLabel.textContent = 'NeoForge バージョン';
+            else if (type === 'paper') loaderLabel.textContent = 'Paper ビルド';
             else if (type === 'mohist') loaderLabel.textContent = 'Mohist ビルド';
         }
 
-        if (type === 'vanilla' || type === 'paper') {
+        if (type === 'vanilla') {
             if (loaderContainer) loaderContainer.classList.add('hidden');
             return;
         }
 
         // Mohistの場合はloaderContainerを表示
+        if (type === 'paper') {
+            if (loaderContainer) loaderContainer.classList.remove('hidden');
+            if (loaderSelect) loaderSelect.innerHTML = '<option>ビルドを読み込み中...</option>';
+
+            if (!mcVersion) {
+                loaderSelect.innerHTML = '<option value="">Minecraftバージョンを選択してください</option>';
+                return;
+            }
+
+            const result = await window.electronAPI.getPaperBuilds(mcVersion);
+            if (loaderSelect) {
+                loaderSelect.innerHTML = '';
+                if (result.success && result.builds.length > 0) {
+                    result.builds.forEach(build => {
+                        const opt = document.createElement('option');
+                        opt.value = build;
+                        opt.textContent = `Build #${build}`;
+                        loaderSelect.appendChild(opt);
+                    });
+                } else {
+                    loaderSelect.innerHTML = '<option value="">利用可能なビルドがありません</option>';
+                    if (!result.success) {
+                        showNotification(`Paperビルドの取得に失敗しました: ${result.error}`, 'error');
+                    }
+                }
+            }
+            return;
+        }
+
         if (type === 'mohist') {
             if (loaderContainer) loaderContainer.classList.remove('hidden');
             if (loaderSelect) loaderSelect.innerHTML = '<option>ビルドを読み込み中...</option>';
@@ -631,32 +731,46 @@ export function setupDomListeners() {
         }
     }
 
-    serverTypeRadios.forEach(radio => {
-        radio.addEventListener('change', async () => {
-            const serverType = radio.value;
-            const versionSelect = document.getElementById('version-select');
-            versionSelect.innerHTML = '<option>バージョンを読み込み中...</option>';
+    function updateVersionSelect() {
+        const serverType = document.querySelector('input[name="server-type"]:checked').value;
+        const versionSelect = document.getElementById('version-select');
+        versionSelect.innerHTML = ''; // クリア
 
-            if (serverType === 'mohist') {
-                const versions = await updateMcVersionsForMohist();
-                versionSelect.innerHTML = '';
-                if (versions.length > 0) {
-                    versions.forEach(v => {
-                        const opt = document.createElement('option');
-                        opt.value = v.name;
-                        opt.textContent = v.name;
-                        versionSelect.appendChild(opt);
-                    });
-                    // 最初のバージョンを選択した状態でビルドリストを更新
-                    versionSelect.dispatchEvent(new Event('change'));
-                } else {
-                    versionSelect.innerHTML = '<option value="">利用可能なバージョンがありません</option>';
-                }
+        let versions = [];
+        if (serverType === 'mohist' && cachedMohistVersions) {
+            versions = cachedMohistVersions.map(v => ({ id: v.name, text: v.name }));
+        } else if (serverType === 'paper' && cachedPaperVersions) {
+            versions = cachedPaperVersions.map(v => ({ id: v.version.id, text: v.version.id }));
+        } else {
+            // state.minecraftVersions は getMinecraftVersions() のIPC応答で設定される
+            if (state.minecraftVersions && state.minecraftVersions.length > 0) {
+                versions = state.minecraftVersions.map(v => ({ id: v.id, text: v.id }));
             } else {
-                // 他のサーバータイプの場合は既存のロジックを呼び出す
+                versionSelect.innerHTML = '<option>バージョン情報なし</option>';
+                // バニラバージョンがまだない場合、取得を試みる
                 window.electronAPI.getMinecraftVersions();
+                return;
             }
-            updateLoaderVersions();
+        }
+
+        if (versions.length > 0) {
+            versions.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = v.text;
+                versionSelect.appendChild(opt);
+            });
+        } else {
+            versionSelect.innerHTML = '<option value="">利用可能なバージョンがありません</option>';
+        }
+        // バージョンリスト更新後にローダーリストも更新
+        versionSelect.dispatchEvent(new Event('change'));
+    }
+
+    serverTypeRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            updateVersionSelect();
+            // updateLoaderVersions(); // updateVersionSelectからchangeイベントが発火するので不要
         });
     });
 
@@ -682,8 +796,9 @@ export function setupDomListeners() {
                 return;
             }
 
-            if (serverType !== 'vanilla' && serverType !== 'paper' && serverType !== 'mohist' && !loaderVersion) {
-                showNotification('Modローダーのバージョンが選択されていません。', 'error');
+            if (serverType !== 'vanilla' && !loaderVersion) {
+                const loaderLabel = document.getElementById('loader-label').textContent || 'ビルド/ローダー';
+                showNotification(`${loaderLabel}が選択されていません。`, 'error');
                 return;
             }
 
@@ -692,7 +807,7 @@ export function setupDomListeners() {
             showNotification(`[${versionId}] (${serverType}) の作成処理を開始します...`, 'info');
 
             // Javaバージョン取得を非同期で行い、完了後にサーバー作成を要求する
-            window.electronAPI.getRequiredJavaVersion({ mcVersion: versionId })
+            window.electronAPI.getRequiredJavaVersion({ mcVersion: versionId, serverType: serverType })
                 .then(result => {
                     let requiredJavaVersion = null;
                     if (result.success) {

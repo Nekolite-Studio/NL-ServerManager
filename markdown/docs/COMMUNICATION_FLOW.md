@@ -30,8 +30,11 @@ sequenceDiagram
     participant Manager_Main as Manager (メイン)
     participant Agent
 
-    User->>Manager_UI: サーバー作成を要求 (タイプ、バージョン選択)
-    note right of Manager_UI: サーバータイプに応じて<br>異なるバージョン取得APIを呼び出す
+    User->>Manager_UI: 「新規サーバー作成」ボタンをクリック
+    Manager_UI->>Manager_Main: IPC: 各種バージョン情報APIを並列で呼び出し (getMinecraftVersions, getPaperVersions, etc.)
+    note right of Manager_UI: API応答をキャッシュし、<br>モーダル内のUIを構築
+    Manager_UI->>User: サーバー作成モーダルを表示
+    User->>Manager_UI: サーバー設定を選択 (タイプ、バージョン等)
     Manager_UI->>Manager_Main: IPC: proxyToAgent(agentId, {type: Message.CREATE_SERVER, payload: {versionId, serverType, loaderVersion, runtime, ...}})
     
     Manager_Main->>Manager_Main: externalApiServiceでAPIを呼び出し、<br>ダウンロードURLを取得 (キャッシュ利用)
@@ -46,7 +49,14 @@ sequenceDiagram
     Manager_UI->>User: UIに反映
 ```
 
-1.  **UI → Main (IPC):** レンダラープロセスは、[`preload.js`](manager/preload.js:1)を介して`proxy-to-agent`チャネルに`Message.CREATE_SERVER`メッセージを送信します。このメッセージには、ユーザーが選択したサーバータイプ、Minecraftバージョン、ローダーバージョンなどが含まれます。UI側では、選択されたサーバータイプ（例: Mohist）に応じて、対応するバージョンリスト取得API（例: `getMohistVersions`）を呼び出し、ドロップダウンを動的に構築します。
+1.  **UI → Main (IPC) / バージョン情報の事前取得:** ユーザーが「新規サーバー作成」ボタンをクリックすると、レンダラープロセスはサーバー作成モーダルを開く前に、サポートされている全サーバータイプ（Vanilla, Paper, Mohistなど）のバージョン情報を取得するためのAPI呼び出しを並列でメインプロセスに要求します。
+2.  **UIの構築と表示:** メインプロセスは外部APIから取得した情報をレンダラープロセスに返し、レンダラープロセスはこれをキャッシュします。その後、キャッシュされたデータを用いてバージョン選択ドロップダウンなどを構築し、ユーザーにモーダルを表示します。ユーザーがモーダル内でサーバータイプを切り替えると、API通信は発生せず、キャッシュからUIが即座に更新されます。
+3.  **UI → Main (IPC) / サーバー作成要求:** ユーザーが必要な設定を選択し「作成」ボタンをクリックすると、レンダラープロセスは[`preload.js`](manager/preload.js:1)を介して`proxy-to-agent`チャネルに`Message.CREATE_SERVER`メッセージを送信します。
+4.  **MainプロセスでのダウンロードURL解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバーJARまたはインストーラーのダウンロードURLを外部APIから取得します。この際、`externalApiService`はキャッシュを利用してAPI呼び出しを最適化します。
+5.  **Main → Agent (WebSocket):** メインプロセスは、取得した`downloadUrl`を`Message.CREATE_SERVER`メッセージの`payload`に含め、`requestId`を付与して対象の`Agent`にWebSocketで送信します。
+6.  **Agentでのダウンロードと設定:** `Agent`は`downloadUrl`を受け取り、そのURLからサーバーJARまたはインストーラーをダウンロードし、適切な場所に配置します。
+7.  **Agent → Main (WebSocket):** `Agent`はサーバー作成処理が完了した後、`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。
+8.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルでUIに通知し、UIは作成完了をユーザーに表示します。
 2.  **MainプロセスでのダウンロードURL解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバーJARまたはインストーラーのダウンロードURLを外部APIから取得します。この際、`externalApiService`はキャッシュを利用してAPI呼び出しを最適化します。
 3.  **Main → Agent (WebSocket):** メインプロセスは、取得した`downloadUrl`を`Message.CREATE_SERVER`メッセージの`payload`に含め、`requestId`を付与して対象の`Agent`にWebSocketで送信します。
 4.  **Agentでのダウンロードと設定:** `Agent`は`downloadUrl`を受け取り、そのURLからサーバーJARまたはインストーラーをダウンロードし、適切な場所に配置します。

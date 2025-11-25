@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Server Modal Mockup</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons (CDN) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gray: {
+                            750: '#2d3748',
+                            850: '#1a202c', 
+                            950: '#0d1117', 
+                        },
+                        blue: {
+                            650: '#2b6cb0', // Custom accent
+                        }
+                    },
+                    animation: {
+                        'spin-slow': 'spin 3s linear infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; 
+        }
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        /* モーダルの表示アニメーション */
+        .modal-enter {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        .modal-enter-active {
+            opacity: 1;
+            transform: scale(1);
+            transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+        }
+        .modal-exit {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .modal-exit-active {
+            opacity: 0;
+            transform: scale(0.95);
+            transition: opacity 0.2s ease-in, transform 0.2s ease-in;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-slate-200 h-screen overflow-hidden relative">
+
+    <!-- === 1. メインアプリ画面（背景） === -->
+    <div id="mainApp" class="absolute inset-0 z-0 flex flex-col">
+        <!-- サイドバー -->
+        <div class="flex flex-1">
+            <nav class="w-64 bg-gray-950 border-r border-gray-800 p-4 flex flex-col gap-4">
+                <div class="h-8 bg-gray-800 rounded w-3/4 animate-pulse"></div>
+                <div class="space-y-2 mt-4">
+                    <div class="h-10 bg-gray-800 rounded w-full"></div>
+                    <div class="h-10 bg-gray-800/50 rounded w-full"></div>
+                    <div class="h-10 bg-gray-800/50 rounded w-full"></div>
+                </div>
+            </nav>
+            <!-- メインコンテンツ -->
+            <main class="flex-1 p-10 flex flex-col items-center justify-center bg-gray-900 gap-6">
+                <div class="text-center space-y-2">
+                    <h1 class="text-3xl font-bold text-gray-700">Server Manager Dashboard</h1>
+                    <p class="text-gray-500">No servers found. Create one to get started.</p>
+                </div>
+                
+                <!-- モーダルを開くトリガーボタン -->
+                <button onclick="toggleModal(true)" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg font-bold flex items-center gap-2 transition-transform active:scale-95">
+                    <i data-lucide="plus" class="w-5 h-5"></i>
+                    新規サーバーを作成
+                </button>
+            </main>
+        </div>
+    </div>
+
+    <!-- === 2. モーダルオーバーレイ === -->
+    <!-- 初期状態はhidden -->
+    <div id="modalOverlay" class="fixed inset-0 z-40 hidden">
+        
+        <!-- 背景の黒透過 -->
+        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity opacity-0" id="modalBackdrop"></div>
+
+        <!-- モーダル配置コンテナ -->
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            
+            <!-- モーダル本体 -->
+            <!-- 修正点: overflow-hiddenを削除し、内部のカラムで角丸を制御 -->
+            <div id="modalContent" class="relative w-full max-w-4xl bg-gray-900 shadow-2xl border border-gray-700 flex flex-col md:flex-row h-[650px] rounded-xl opacity-0 transform scale-95 transition-all duration-200">
+                
+                <!-- 左カラム: 基本設定 -->
+                <!-- 修正点: rounded-l-xl を追加 -->
+                <div class="w-full md:w-5/12 bg-gray-950 p-6 flex flex-col border-b md:border-b-0 md:border-r border-gray-700 rounded-t-xl md:rounded-tr-none md:rounded-l-xl z-20">
+                    <h2 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                        <i data-lucide="plus-circle" class="w-5 h-5 text-blue-500"></i>
+                        新規サーバー作成
+                    </h2>
+
+                    <div class="space-y-6 flex-1">
+                        
+                        <!-- 1. サーバー名 (最優先) -->
+                        <div class="group">
+                            <label class="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider group-focus-within:text-blue-400 transition-colors">
+                                サーバー名
+                            </label>
+                            <div class="relative">
+                                <i data-lucide="tag" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                                <input type="text" id="serverNameInput" placeholder="My Survival World" 
+                                    class="w-full bg-gray-800 text-white pl-10 pr-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder-gray-600"
+                                    autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- 2. ホストマシン -->
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">
+                                ホストマシン
+                            </label>
+                            <div class="relative">
+                                <i data-lucide="server" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                                <select class="w-full bg-gray-800 text-white pl-10 pr-8 py-3 rounded-lg border border-gray-700 focus:border-blue-500 outline-none appearance-none cursor-pointer hover:bg-gray-750 transition-colors">
+                                    <option>Local Agent (127.0.0.1)</option>
+                                    <option>Remote VPS (192.168.1.50)</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="absolute right-3 top-3.5 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                            </div>
+                        </div>
+
+                        <!-- 3. サーバータイプ (リッチドロップダウン) -->
+                        <div class="relative z-50"> <!-- z-indexを上げて手前に表示 -->
+                            <label class="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">
+                                サーバータイプ
+                            </label>
+                            
+                            <!-- ドロップダウン トリガーボタン -->
+                            <button id="typeSelectBtn" class="w-full bg-gray-800 hover:bg-gray-750 border border-gray-600 hover:border-gray-500 text-left rounded-lg p-3 flex items-center justify-between group transition-all duration-200">
+                                <div class="flex items-center gap-3">
+                                    <div id="selectedTypeIcon" class="w-10 h-10 rounded bg-gray-700 flex items-center justify-center text-xl transition-colors group-hover:bg-gray-600">
+                                        🧊
+                                    </div>
+                                    <div>
+                                        <div id="selectedTypeName" class="font-bold text-white text-lg leading-tight">Vanilla</div>
+                                        <div id="selectedTypeDesc" class="text-xs text-gray-400">Minecraft 公式サーバー</div>
+                                    </div>
+                                </div>
+                                <i data-lucide="chevrons-up-down" class="w-5 h-5 text-gray-500"></i>
+                            </button>
+
+                            <!-- ドロップダウン メニュー -->
+                            <!-- 修正点: overflowクリッピング問題対策済み (親のoverflow-hidden削除により) -->
+                            <div id="typeDropdownMenu" class="hidden absolute top-full left-0 w-full mt-2 bg-gray-800 border border-gray-600 rounded-lg shadow-[0_10px_40px_-10px_rgba(0,0,0,0.7)] max-h-[300px] overflow-y-auto z-50 divide-y divide-gray-700">
+                                <!-- JSでここにリストを生成します -->
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <!-- 左カラム下部の装飾 (修正済み) -->
+                    <div class="mt-auto pt-6 text-xs text-yellow-500/80 flex items-start gap-2">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 mt-0.5 shrink-0"></i>
+                        <span>サーバー名以外は作成後に変更できません。慎重に選択してください。</span>
+                    </div>
+                </div>
+
+                <!-- 右カラム: 詳細設定 -->
+                <!-- 修正点: rounded-r-xl を追加 -->
+                <div class="w-full md:w-7/12 bg-gray-900 p-8 flex flex-col relative rounded-b-xl md:rounded-bl-none md:rounded-r-xl z-10">
+                    
+                    <!-- バージョン選択セクション -->
+                    <div class="space-y-6 flex-1">
+                        
+                        <!-- ヘッダー + フィルタ -->
+                        <div class="flex justify-between items-end border-b border-gray-800 pb-2">
+                            <label class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                                Minecraft バージョン
+                            </label>
+                            
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <span class="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">Show Snapshots</span>
+                                <div class="relative">
+                                    <input type="checkbox" id="snapshotToggle" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- バージョンリスト -->
+                        <div class="relative">
+                            <select id="mcVersionSelect" class="w-full bg-gray-800 text-white pl-4 pr-10 py-3 rounded-lg border border-gray-700 focus:border-blue-500 outline-none appearance-none cursor-pointer scrollbar-thin">
+                                <!-- JSで注入 -->
+                            </select>
+                            <i data-lucide="chevron-down" class="absolute right-3 top-3.5 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                            <div class="text-xs text-gray-500 mt-1 text-right" id="versionCountLabel">Select a version</div>
+                        </div>
+
+                        <!-- ビルド選択 (条件付き表示) -->
+                        <div id="buildSection" class="transition-all duration-300 opacity-100">
+                            <label class="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider" id="buildLabel">
+                                Loader Build
+                            </label>
+                            <div class="relative">
+                                <select id="buildSelect" class="w-full bg-gray-800 text-white pl-4 pr-10 py-3 rounded-lg border border-gray-700 focus:border-blue-500 outline-none appearance-none cursor-pointer">
+                                    <!-- JSで注入 -->
+                                </select>
+                                <i data-lucide="package" class="absolute right-10 top-3.5 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                                <i data-lucide="chevron-down" class="absolute right-3 top-3.5 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                            </div>
+                        </div>
+
+                        <!-- 確認情報エリア -->
+                        <div class="bg-blue-900/20 border border-blue-800/50 rounded-lg p-4 mt-4">
+                            <h3 class="text-sm font-bold text-blue-400 mb-2 flex items-center gap-2">
+                                <i data-lucide="cpu" class="w-4 h-4"></i>
+                                Environment Check
+                            </h3>
+                            <ul class="text-sm space-y-2 text-gray-300">
+                                <li class="flex justify-between">
+                                    <span>Java Runtime:</span>
+                                    <span class="font-mono text-white bg-gray-800 px-2 rounded" id="javaVersionDisplay">Java 21</span>
+                                </li>
+                                <li class="flex justify-between text-gray-500">
+                                    <span>Status:</span>
+                                    <span class="text-green-400">Ready to Install</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                    </div>
+
+                    <!-- フッターアクション -->
+                    <div class="mt-8 flex justify-end gap-3 pt-6 border-t border-gray-800">
+                        <button onclick="toggleModal(false)" id="cancelBtn" class="px-5 py-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors font-medium text-sm">
+                            キャンセル
+                        </button>
+                        
+                        <!-- 作成ボタン: ローディング状態を制御するためID付与 -->
+                        <button id="createBtn" onclick="handleCreate()" class="px-8 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-lg shadow-lg shadow-blue-900/30 transition-all font-bold text-sm flex items-center gap-2 transform active:scale-95 disabled:scale-100 min-w-[120px] justify-center">
+                            <span id="createBtnText" class="flex items-center gap-2">
+                                <i data-lucide="check" class="w-4 h-4"></i>
+                                作成
+                            </span>
+                            <!-- ローディングスピナー (初期は非表示) -->
+                            <span id="createSpinner" class="hidden">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                                送信中...
+                            </span>
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- 1. データ定義 (Mock Data) ---
+        
+        const serverTypes = [
+            {
+                category: "Official",
+                items: [
+                    { id: "vanilla", name: "Vanilla", icon: "🧊", desc: "Minecraft 公式サーバー", color: "bg-blue-500" },
+                ]
+            },
+            {
+                category: "Mod Loaders",
+                items: [
+                    { id: "forge", name: "Forge", icon: "⚒️", desc: "定番の大規模Modローダー", color: "bg-orange-600" },
+                    { id: "neoforge", name: "NeoForge", icon: "🦊", desc: "Forgeから派生した新標準", color: "bg-orange-500" },
+                    { id: "fabric", name: "Fabric", icon: "🧵", desc: "軽量かつ高速なローダー", color: "bg-yellow-100 text-black" },
+                    { id: "quilt", name: "Quilt", icon: "🟣", desc: "Fabric互換のコミュニティ版", color: "bg-purple-500" },
+                ]
+            },
+            {
+                category: "Plugins",
+                items: [
+                    { id: "paper", name: "Paper", icon: "📄", desc: "高速・軽量プラグインサーバー", color: "bg-red-500" },
+                    { id: "spigot", name: "Spigot", icon: "⚡", desc: "プラグインサーバーの元祖", color: "bg-orange-400" },
+                    { id: "purpur", name: "Purpur", icon: "🔮", desc: "カスタマイズ性を極めたPaper派生", color: "bg-purple-600" },
+                ]
+            },
+            {
+                category: "Hybrid",
+                items: [
+                    { id: "mohist", name: "Mohist", icon: "🧬", desc: "Forge Mods + Paper Plugins", color: "bg-indigo-500" },
+                ]
+            }
+        ];
+
+        const mcVersions = {
+            all: ["1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.19.4", "1.18.2", "1.16.5", "1.12.2", "1.7.10"],
+            snapshots: ["24w09a (Snap)", "24w07a (Snap)", "1.20.5-pre1", "1.20.4", "1.20.2", "1.19.4"], 
+            limited: ["1.20.2", "1.20.1", "1.16.5", "1.12.2"] 
+        };
+
+        const builds = {
+            "forge-1.20.1": ["47.2.19 (Latest)", "47.2.0 (Recommended)", "47.1.0", "47.0.35"],
+            "paper-1.20.4": ["#430 (Latest)", "#428", "#410", "#395"],
+            "default": ["Latest Build", "Stable Build"]
+        };
+
+        let state = {
+            selectedType: serverTypes[0].items[0], 
+            showSnapshots: false,
+            selectedVersion: "1.20.4"
+        };
+
+        const els = {
+            // Modal controls
+            modalOverlay: document.getElementById('modalOverlay'),
+            modalBackdrop: document.getElementById('modalBackdrop'),
+            modalContent: document.getElementById('modalContent'),
+            createBtn: document.getElementById('createBtn'),
+            createBtnText: document.getElementById('createBtnText'),
+            createSpinner: document.getElementById('createSpinner'),
+            cancelBtn: document.getElementById('cancelBtn'),
+
+            // Form controls
+            typeBtn: document.getElementById('typeSelectBtn'),
+            typeMenu: document.getElementById('typeDropdownMenu'),
+            selectedIcon: document.getElementById('selectedTypeIcon'),
+            selectedName: document.getElementById('selectedTypeName'),
+            selectedDesc: document.getElementById('selectedTypeDesc'),
+            
+            snapshotToggle: document.getElementById('snapshotToggle'),
+            mcVersionSelect: document.getElementById('mcVersionSelect'),
+            versionCount: document.getElementById('versionCountLabel'),
+            
+            buildSection: document.getElementById('buildSection'),
+            buildLabel: document.getElementById('buildLabel'),
+            buildSelect: document.getElementById('buildSelect'),
+            
+            javaVer: document.getElementById('javaVersionDisplay')
+        };
+
+        // --- 2. モーダル開閉ロジック ---
+
+        window.toggleModal = (show) => {
+            if (show) {
+                // Open
+                els.modalOverlay.classList.remove('hidden');
+                // Trigger transitions after a slight delay for animation
+                setTimeout(() => {
+                    els.modalBackdrop.classList.remove('opacity-0');
+                    els.modalContent.classList.remove('opacity-0', 'scale-95');
+                }, 10);
+                
+                // Reset state
+                resetCreateButton();
+            } else {
+                // Close animation
+                els.modalBackdrop.classList.add('opacity-0');
+                els.modalContent.classList.add('opacity-0', 'scale-95');
+                
+                setTimeout(() => {
+                    els.modalOverlay.classList.add('hidden');
+                }, 200); // Wait for transition duration
+            }
+        };
+
+        // Backdrop click close
+        els.modalOverlay.addEventListener('click', (e) => {
+            if (e.target === els.modalOverlay || e.target === document.querySelector('#modalOverlay > div.p-4')) {
+                // ドロップダウンが開いている時は閉じないほうが親切だが、今回は単純化
+                toggleModal(false);
+            }
+        });
+
+
+        // --- 3. 作成ボタンのロジック ---
+
+        window.handleCreate = () => {
+            // 1. UIをLoading状態にする
+            els.createBtn.disabled = true;
+            els.createBtnText.classList.add('hidden');
+            els.createSpinner.classList.remove('hidden');
+            els.createSpinner.classList.add('flex', 'items-center', 'gap-2');
+            els.cancelBtn.disabled = true;
+            els.cancelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            // 2. 擬似的な非同期通信 (2秒待機)
+            console.log("Sending creation request to agent...");
+            
+            setTimeout(() => {
+                console.log("Response received: Success");
+                // 3. 完了したらモーダルを閉じる
+                toggleModal(false);
+                
+                // (Optional) ユーザーに完了を通知するトーストなどを出すならここ
+                
+            }, 2000);
+        };
+
+        function resetCreateButton() {
+            els.createBtn.disabled = false;
+            els.createBtnText.classList.remove('hidden');
+            els.createSpinner.classList.add('hidden');
+            els.createSpinner.classList.remove('flex');
+            els.cancelBtn.disabled = false;
+            els.cancelBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+
+        // --- 4. フォーム基本ロジック (前回同様) ---
+
+        lucide.createIcons();
+
+        function renderTypeDropdown() {
+            let html = '';
+            serverTypes.forEach(cat => {
+                html += `<div class="p-2">`;
+                html += `<div class="text-xs font-bold text-gray-500 px-2 py-1 uppercase tracking-wider">${cat.category}</div>`;
+                cat.items.forEach(type => {
+                    html += `
+                        <button onclick="selectType('${type.id}')" class="w-full flex items-center gap-3 p-2 rounded hover:bg-gray-700 transition-colors text-left group">
+                            <div class="w-8 h-8 rounded bg-gray-700 flex items-center justify-center text-lg shadow-inner group-hover:bg-gray-600 transition-colors">
+                                ${type.icon}
+                            </div>
+                            <div>
+                                <div class="text-sm font-bold text-gray-200">${type.name}</div>
+                                <div class="text-[10px] text-gray-500 group-hover:text-gray-400">${type.desc}</div>
+                            </div>
+                        </button>
+                    `;
+                });
+                html += `</div>`;
+            });
+            els.typeMenu.innerHTML = html;
+        }
+
+        window.selectType = (typeId) => {
+            let found = null;
+            serverTypes.forEach(c => {
+                const item = c.items.find(i => i.id === typeId);
+                if(item) found = item;
+            });
+
+            if (!found) return;
+            state.selectedType = found;
+
+            els.selectedIcon.textContent = found.icon;
+            els.selectedName.textContent = found.name;
+            els.selectedDesc.textContent = found.desc;
+            
+            if (found.id === 'vanilla') {
+                els.buildSection.style.opacity = '0';
+                els.buildSection.style.pointerEvents = 'none';
+            } else {
+                els.buildSection.style.opacity = '1';
+                els.buildSection.style.pointerEvents = 'auto';
+                els.buildLabel.textContent = `${found.name} Build`;
+            }
+
+            toggleTypeDropdown(false);
+            updateVersionList();
+        };
+
+        function toggleTypeDropdown(forceState = null) {
+            const isHidden = els.typeMenu.classList.contains('hidden');
+            const shouldShow = forceState !== null ? forceState : isHidden;
+
+            if (shouldShow) {
+                els.typeMenu.classList.remove('hidden');
+                els.typeBtn.classList.add('ring-2', 'ring-blue-500', 'border-transparent');
+            } else {
+                els.typeMenu.classList.add('hidden');
+                els.typeBtn.classList.remove('ring-2', 'ring-blue-500', 'border-transparent');
+            }
+        }
+
+        function updateVersionList() {
+            els.mcVersionSelect.innerHTML = '';
+            
+            let list = [];
+            if (state.showSnapshots) {
+                list = mcVersions.snapshots;
+            } else if (['mohist', 'quilt'].includes(state.selectedType.id)) {
+                list = mcVersions.limited;
+            } else {
+                list = mcVersions.all;
+            }
+
+            list.forEach(ver => {
+                const opt = document.createElement('option');
+                opt.value = ver;
+                opt.textContent = ver;
+                els.mcVersionSelect.appendChild(opt);
+            });
+
+            els.versionCount.textContent = `${list.length} versions found`;
+            state.selectedVersion = list[0];
+            updateBuildList();
+            updateJavaVersion();
+        }
+
+        function updateBuildList() {
+            if (state.selectedType.id === 'vanilla') return;
+            els.buildSelect.innerHTML = '';
+            const key = `${state.selectedType.id}-${state.selectedVersion}`;
+            const buildList = builds[key] || builds['default'];
+            buildList.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b;
+                opt.textContent = b;
+                els.buildSelect.appendChild(opt);
+            });
+        }
+
+        function updateJavaVersion() {
+            const v = state.selectedVersion;
+            let java = "Java 8";
+            if (v.includes("1.20") || v.includes("1.19") || v.includes("1.18")) {
+                java = "Java 17";
+            } else if (v.includes("1.21") || v.includes("24w")) {
+                java = "Java 21";
+            } else if (v.includes("1.17") || v.includes("1.16.5")) {
+                java = "Java 16/11";
+            }
+            els.javaVer.textContent = java;
+        }
+
+        // Event Listeners
+        els.typeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleTypeDropdown();
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!els.typeBtn.contains(e.target) && !els.typeMenu.contains(e.target)) {
+                toggleTypeDropdown(false);
+            }
+        });
+
+        els.snapshotToggle.addEventListener('change', (e) => {
+            state.showSnapshots = e.target.checked;
+            updateVersionList();
+        });
+
+        els.mcVersionSelect.addEventListener('change', (e) => {
+            state.selectedVersion = e.target.value;
+            updateBuildList();
+            updateJavaVersion();
+        });
+
+        // Init
+        renderTypeDropdown();
+        updateVersionList();
+
+    </script>
+</body>
+</html>

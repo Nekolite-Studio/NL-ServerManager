@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     Message,
   // Renderer to Main (Invoke/Send)
   rendererReady: () => ipcRenderer.send('renderer-ready'),
-  getMinecraftVersions: () => ipcRenderer.send('get-minecraft-versions'),
+  getMinecraftVersions: () => ipcRenderer.invoke('get-minecraft-versions'),
   getJavaDownloadInfo: (options) => ipcRenderer.invoke('getJavaDownloadInfo', options),
   getRequiredJavaVersion: (options) => ipcRenderer.invoke('get-required-java-version', options),
   getServerPropertiesAnnotations: () => ipcRenderer.invoke('get-server-properties-annotations'),
@@ -13,8 +13,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFabricVersions: () => ipcRenderer.invoke('get-fabric-versions'),
   getQuiltVersions: () => ipcRenderer.invoke('get-quilt-versions'),
   getNeoForgeVersions: (mcVersion) => ipcRenderer.invoke('get-neoforge-versions', { mcVersion }),
+  getPaperVersions: () => ipcRenderer.invoke('get-paper-versions'),
   getMohistVersions: () => ipcRenderer.invoke('get-mohist-versions'),
   getMohistBuilds: (mcVersion) => ipcRenderer.invoke('get-mohist-builds', { mcVersion }),
+  getPaperBuilds: (mcVersion) => ipcRenderer.invoke('get-paper-builds', { mcVersion }),
 
   // Agent Management
   addAgent: (config) => ipcRenderer.invoke('add-agent', config),

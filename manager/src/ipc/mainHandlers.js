@@ -90,12 +90,12 @@ export function setupIpcHandlers(mainWindow) {
     });
 
     // Minecraftバージョンから要求Javaバージョンを取得するIPCハンドラ
-    ipcMain.handle('get-required-java-version', async (event, { mcVersion }) => {
+    ipcMain.handle('get-required-java-version', async (event, { mcVersion, serverType }) => {
         try {
-            const javaVersion = await externalApiService.getRequiredJavaVersion(mcVersion);
+            const javaVersion = await externalApiService.getRequiredJavaVersion(mcVersion, serverType);
             return { success: true, javaVersion };
         } catch (error) {
-            console.error(`Error fetching required Java version for ${mcVersion}:`, error);
+            console.error(`Error fetching required Java version for ${mcVersion} (${serverType}):`, error);
             return { success: false, error: error.message };
         }
     });
@@ -108,17 +108,20 @@ export function setupIpcHandlers(mainWindow) {
     // --- Minecraft Version Handling ---
 
     // レンダラからのバージョン取得要求をハンドル
-    ipcMain.on('get-minecraft-versions', async (event) => {
+    ipcMain.handle('get-minecraft-versions', async (event) => {
         try {
             const versions = await externalApiService.fetchMinecraftVersions();
+            // `state.minecraftVersions` に直接反映させるため、イベントも送信し続ける
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('minecraft-versions', { success: true, versions });
             }
+            return { success: true, versions };
         } catch (error) {
             console.error('Failed to fetch Minecraft versions:', error);
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('minecraft-versions', { success: false, error: error.toString() });
             }
+            return { success: false, error: error.toString() };
         }
     });
 
@@ -147,6 +150,11 @@ export function setupIpcHandlers(mainWindow) {
         return await externalApiService.getPaperVersions();
     });
 
+    // Paper Build Handling
+    ipcMain.handle('get-paper-builds', async (event, { mcVersion }) => {
+        return await externalApiService.getPaperBuilds(mcVersion);
+    });
+
     // Mohist Version Handling
     ipcMain.handle('get-mohist-versions', async (event) => {
         return await externalApiService.getMohistVersions();
@@ -156,4 +164,5 @@ export function setupIpcHandlers(mainWindow) {
     ipcMain.handle('get-mohist-builds', async (event, { mcVersion }) => {
         return await externalApiService.getMohistBuilds(mcVersion);
     });
+
 }

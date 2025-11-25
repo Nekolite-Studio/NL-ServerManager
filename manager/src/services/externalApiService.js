@@ -19,12 +19,17 @@ function detectJavaByDate(date) {
 }
 
 /**
- * 指定されたMinecraftバージョンに必要なJavaのメジャーバージョンを取得する
+ * 指定されたMinecraftバージョンとサーバータイプに必要なJavaのメジャーバージョンを取得する
  * @param {string} mcVersion
+ * @param {string} [serverType='vanilla']
  * @returns {Promise<number>}
  */
-async function getRequiredJavaVersion(mcVersion) {
-    const cacheKey = `javaVersion-${mcVersion}`;
+async function getRequiredJavaVersion(mcVersion, serverType = 'vanilla') {
+    // Mohistは独自のキャッシュキーを持つ
+    const cacheKey = serverType === 'mohist'
+        ? `javaVersion-${mcVersion}-${serverType}`
+        : `javaVersion-${mcVersion}`;
+
     const cachedData = getCachedData(cacheKey);
     if (cachedData) return cachedData;
 
@@ -41,6 +46,14 @@ async function getRequiredJavaVersion(mcVersion) {
         const releaseTime = new Date(entry.releaseTime);
         javaVersion = detectJavaByDate(releaseTime);
     }
+
+    // Mohist 固有のJavaバージョン上書きロジック
+    // Mohistは、MC 1.12.2以前 (Java 8) のバージョンでもJava 11を要求する場合がある
+    if (serverType === 'mohist' && javaVersion === 8) {
+        console.log(`[getRequiredJavaVersion] Mohist server detected for MC ${mcVersion}. Overriding Java 8 with Java 11.`);
+        javaVersion = 11;
+    }
+
     setCachedData(cacheKey, javaVersion);
     return javaVersion;
 }
@@ -278,26 +291,67 @@ async function getNeoForgeVersions(mcVersion) {
 }
 
 /**
- * Paperのバージョン情報を取得する
+ * Paperのバージョン情報とビルド情報を新しいAPIエンドポイントから取得する
  * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
  */
 async function getPaperVersions() {
-    const cacheKey = `paperVersions`;
+    const cacheKey = `paperVersions_v3`; // 新��いエンドポイント用にキャッシュキーを変更
     const cachedData = getCachedData(cacheKey);
     if (cachedData) return cachedData;
 
     try {
-        const response = await axios.get('https://api.papermc.io/v2/projects/paper');
-        // versionsは昇順(古い順)で来るため、降順(新しい順)にソートする
-        const versions = response.data.versions.reverse();
+        const response = await axios.get('https://fill.papermc.io/v3/projects/paper/versions');
+        // APIは新しい順にソートされていると仮定するが、念のため降順ソート
+        const versions = response.data.versions.sort((a, b) => {
+            // 簡単なセマンティックバージョニング比較
+            const partsA = a.version.id.split('.').map(Number);
+            const partsB = b.version.id.split('.').map(Number);
+            for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+                const valA = partsA[i] || 0;
+                const valB = partsB[i] || 0;
+                if (valA > valB) return -1;
+                if (valA < valB) return 1;
+            }
+            return 0;
+        });
         const result = { success: true, versions };
         setCachedData(cacheKey, result);
         return result;
     } catch (error) {
-        console.error('Failed to fetch Paper versions:', error);
+        console.error('Failed to fetch Paper versions from v3 API:', error);
         const result = { success: false, error: error.message };
         setCachedData(cacheKey, result); // エラーでもキャッシュする
         return result;
+    }
+}
+
+/**
+ * キャッシュされたPaperのバージョン情報から特定のMCバージョンのビルドリストを取得する
+ * @param {string} mcVersion - MinecraftのバージョンID (例: '1.21.10')
+ * @returns {Promise<{success: boolean, builds?: Array, error?: string}>}
+ */
+async function getPaperBuilds(mcVersion) {
+    const cacheKey = `paperVersions_v3`;
+    let cachedData = getCachedData(cacheKey);
+
+    // キャッシュがない場合は取得を試みる
+    if (!cachedData) {
+        const versionsResult = await getPaperVersions();
+        if (versionsResult.success) {
+            cachedData = versionsResult;
+        } else {
+            return { success: false, error: 'Paper version data is not available.' };
+        }
+    }
+
+    const versionData = cachedData.versions.find(v => v.version.id === mcVersion);
+
+    if (versionData && versionData.builds) {
+        // ビルドは昇順なので、降順(新しい順)にソートする
+        const builds = [...versionData.builds].reverse();
+        return { success: true, builds };
+    } else {
+        return { success: false, error: `No builds found for Paper version ${mcVersion}` };
     }
 }
 
@@ -370,8 +424,9 @@ export {
     getQuiltVersions,
     getNeoForgeVersions,
     getPaperVersions,
+    getPaperBuilds, // 新しく追加
     getMohistVersions,
-    getMohistBuilds, // 新しく追加
+    getMohistBuilds,
     getDownloadUrlForServerType
 };
 
@@ -460,25 +515,11 @@ async function getDownloadUrlForServerType(serverType, versionId, loaderVersion)
             break;
 
         case 'paper':
-            // 1. ビルド情報の取得
-            const buildsUrl = `https://api.papermc.io/v2/projects/paper/versions/${versionId}`;
-            const buildsData = (await axios.get(buildsUrl)).data;
-            
-            if (!buildsData.builds || buildsData.builds.length === 0) {
-                throw new Error(`No builds found for Paper version ${versionId}`);
-            }
-            const latestBuild = buildsData.builds[buildsData.builds.length - 1];
-
-            // 2. ファイル名の特定
-            const buildInfoUrl = `https://api.papermc.io/v2/projects/paper/versions/${versionId}/builds/${latestBuild}`;
-            const buildInfo = (await axios.get(buildInfoUrl)).data;
-            const fileName = buildInfo.downloads.application.name;
-            
-            if (!fileName) {
-                throw new Error(`Could not determine filename for Paper build ${latestBuild}`);
-            }
-            // 3. URLの構築
-            downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${versionId}/builds/${latestBuild}/downloads/${fileName}`;
+            if (!loaderVersion) throw new Error('Paper build ID (loaderVersion) is required for Paper servers.');
+            // loaderVersionにビルドIDが直接渡されることを期待する
+            // ファイル名は固定で `paper-{versionId}-{buildId}.jar` となる
+            const fileName = `paper-${versionId}-${loaderVersion}.jar`;
+            downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${versionId}/builds/${loaderVersion}/downloads/${fileName}`;
             break;
 
         case 'mohist':

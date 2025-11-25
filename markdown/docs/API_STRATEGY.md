@@ -85,14 +85,15 @@ API呼び出しのパフォーマンス向上と外部サービスへの負荷�
 
 キャッシュキーは、APIの種類とリクエストパラメータに基づいて一意に生成されます。
 
-*   **Javaバージョン (`getRequiredJavaVersion`):** `javaVersion-{mcVersion}`
+*   **Javaバージョン (`getRequiredJavaVersion`):** `javaVersion-{mcVersion}` または `javaVersion-{mcVersion}-{serverType}` (Mohistの場合など)
 *   **Javaダウンロード情報 (`getJavaDownloadInfo`):** `javaDownloadInfo-{feature_version}-{os}-{arch}`
 *   **Minecraftバージョンリスト (`fetchMinecraftVersions`):** `minecraftVersions` (固定)
 *   **Forgeバージョンリスト (`getForgeVersions`):** `forgeVersions` (固定)
 *   **Fabricバージョンリスト (`getFabricVersions`):** `fabricVersions` (固定)
 *   **Quiltバージョンリスト (`getQuiltVersions`):** `quiltVersions` (固定)
 *   **NeoForgeバージョンリスト (`getNeoForgeVersions`):** `neoForgeVersions-{mcVersion}`
-*   **Paperバージョンリスト (`getPaperVersions`):** `paperVersions` (固定)
+*   **Paperバージョンリスト (`getPaperVersions`):** `paperVersions_v3` (固定)
+*   **Paperビルドリスト (`getPaperBuilds`):** `paperVersions_v3` のキャッシュから取得 (独立したキーなし)
 *   **Mohistバージョンリスト (`getMohistVersions`):** `mohistVersions` (固定)
 *   **Mohistビルドリスト (`getMohistBuilds`):** `mohistBuilds-{mcVersion}`
 *   **サーバーJAR/インストーラーダウンロードURL (`getDownloadUrlForServerType`):** `downloadUrl-{serverType}-{versionId}-{loaderVersion || ''}`
@@ -135,18 +136,19 @@ sequenceDiagram
 
 #### 詳細
 
-*   **操作:** ユーザーがサーバー作成画面でMinecraftのバージョン選択ドロップダウンを開く、または特定のModローダーのバージョンを選択しようとする。
-*   **API呼び出し:**
+*   **操作:** ユーザーが「新規サーバー作成」ボタンをクリックし、作成モーダルを開く。
+*   **API呼び出し:** モーダル表示時に、以下のAPIが**並列で**一括して呼び出され、結果がキャッシュされます。
     *   `fetchMinecraftVersions()`: Mojangのバージョンマニフェスト (`https://launchermeta.mojang.com/mc/game/version_manifest.json`)
     *   `getForgeVersions()`: Forgeのプロモーション情報 (`https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json`)
     *   `getFabricVersions()`: Fabricのローダーバージョン (`https://meta.fabricmc.net/v2/versions/loader`)
     *   `getQuiltVersions()`: Quiltのローダーバージョン (`https://meta.quiltmc.org/v3/versions/loader`)
-    *   `getNeoForgeVersions(mcVersion)`: NeoForgeのmaven-metadata (`https://maven.neoforged.net/.../maven-metadata.xml`)
-    *   `getPaperVersions()`: Paperのプロジェクト情報 (`https://api.papermc.io/v2/projects/paper`)
-    *   `getMohistVersions()`: Mohistのプロジェクト情報 (`https://api.mohistmc.com/project/mohist/versions`)。レスポンスはバージョン番号で降順にソートされます。
-    *   `getMohistBuilds(mcVersion)`: Mohistのビルド情報 (`https://api.mohistmc.com/project/mohist/{mcVersion}/builds`)。レスポンスはビルドIDで降順にソートされます。
+    *   `getPaperVersions()`: Paperのバージョンとビルド情報 (`https://fill.papermc.io/v3/projects/paper/versions`)
+    *   `getMohistVersions()`: Mohistのプロジェクト情報 (`https://api.mohistmc.com/project/mohist/versions`)
 *   **データ:** 各APIから取得したバージョンリストデータ。
-*   **キャッシュの利用:** 各関数は、まず`storeManager`からキャッシュを試みます。キャッシュが存在し、有効期限内であればそれを使用します。ない場合は外部APIにアクセスし、結果をキャッシュに保存します。
+*   **キャッシュの利用:** ユーザーがモーダル内でサーバータイプを切り替える際には、これらのキャッシュされたデータが即座に使用され、UIが同期的に更新されます。バージョン選択に応じて、以下のAPIが追加で呼び出されることがあります。
+    *   `getNeoForgeVersions(mcVersion)`: NeoForgeのmaven-metadata (`https://maven.neoforged.net/.../maven-metadata.xml`)
+    *   `getMohistBuilds(mcVersion)`: Mohistのビルド情報 (`https://api.mohistmc.com/project/mohist/{mcVersion}/builds`)
+    *   `getPaperBuilds(mcVersion)`: `getPaperVersions`でキャッシュしたデータからビルド情報を抽出します。
 
 ### 3.2. 新規Minecraftサーバーを作成する
 
@@ -196,7 +198,7 @@ sequenceDiagram
         *   Vanilla: Mojangのバージョンマニフェストとバージョン詳細 (`https://launchermeta.mojang.com/mc/game/version_manifest.json` と `versionInfo.url`)
         *   Forge/NeoForge: MavenリポジトリのインストーラーJARの直接URL
         *   Fabric/Quilt: Fabric/QuiltインストーラーJARの直接URL
-        *   Paper: PaperMC API (`https://api.papermc.io/v2/projects/paper/...`) を使用してビルド情報とファイル名を取得し、ダウンロードURLを構築
+        *   Paper: PaperMC API (`https://api.papermc.io/v2/projects/paper/versions/{versionId}/builds/{buildId}/downloads/paper-{versionId}-{buildId}.jar`) の形式でダウンロードURLを直接構築します。
         *   Mohist: MohistMC API (`https://api.mohistmc.com/project/mohist/{mcVersion}/builds/{buildId}/download`) から特定のビルドのダウンロードURLを取得します。`loaderVersion`として`'latest'`が渡された場合、`getMohistBuilds`を内部で呼び出して最新のビルドIDを解決します。
 *   **データ:** 解決されたサーバーJARまたはインストーラーの直接ダウンロードURL。
 *   **キャッシュの利用:** `getDownloadUrlForServerType`関数内で、`downloadUrl-{serverType}-{versionId}-{loaderVersion}`の形式でキャッシュが利用されます。
@@ -271,6 +273,7 @@ sequenceDiagram
 #### 詳細
 
 *   **操作:** 特定のMinecraftバージョンに必要なJavaバージョンを知りたい場合。
-*   **API呼び出し:** `getRequiredJavaVersion(mcVersion)`: MojangのバージョンマニフェストV2 (`https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`) と、そこから得られるバージョン詳細URLへのアクセス。
+*   **API呼び出し:** `getRequiredJavaVersion(mcVersion, serverType)`: MojangのバージョンマニフェストV2 (`https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`) と、そこから得られるバージョン詳細URLへのアクセス。
+*   **特殊ロジック:** `serverType`が `'mohist'` で、Mojangが要求するJavaバージョンが `8` の場合、戻り値は `11` に上書きされます。
 *   **データ:** 必要なJavaのメジャーバージョン。
-*   **キャッシュの利用:** `javaVersion-{mcVersion}`の形式でキャッシュが利用されます。
+*   **キャッシュの利用:** `javaVersion-{mcVersion}` または `javaVersion-{mcVersion}-{serverType}` の形式でキャッシュが利用されます。
