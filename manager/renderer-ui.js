@@ -9,6 +9,7 @@ import { renderServerDetail, updateDetailViewContent } from './src/ui/views/serv
 import { renderPhysicalServerDetail, updatePhysicalServerDetailContent } from './src/ui/views/physicalServerDetailView.js';
 import { showNotification } from './src/ui/components/notification.js';
 import { showConfirmationModal } from './src/ui/components/modal.js';
+import { ServerCreateModal } from './src/ui/components/serverCreateModal.js';
 
 // --- DOM要素 (グローバルアクセス用) ---
 // メインの renderer.js の DOMContentLoaded 内で代入されます
@@ -86,6 +87,7 @@ window.updateDetailViewContent = updateDetailViewContent;
 window.updatePhysicalServerDetailContent = updatePhysicalServerDetailContent;
 window.showNotification = showNotification;
 window.showConfirmationModal = showConfirmationModal;
+window.serverCreateModal = new ServerCreateModal();
 
 export {
     updateView,

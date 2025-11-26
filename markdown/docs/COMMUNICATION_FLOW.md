@@ -1,27 +1,27 @@
 # NL-ServerManager 通信フロー解説
 
-このドキュメントは、NL-ServerManagerの`Manager` (Electron GUI) と `Agent` (Node.jsプロセス) 間の通信アーキテクチャとデータフローを包括的に解説します。すべてのメッセージタイプは[`@nl-server-manager/common/protocol.js`](common/protocol.js:1)で定義された`Message`オブジェクト定数を使用します。
+このドキュメントは、NL-ServerManager の`Manager` (Electron GUI) と `Agent` (Node.js プロセス) 間の通信アーキテクチャとデータフローを包括的に解説します。すべてのメッセージタイプは[`@nl-server-manager/common/protocol.js`](common/protocol.js:1)で定義された`Message`オブジェクト定数を使用します。
 
 ## 1. 通信の概要
 
-本システムは、2つの主要な通信チャネルを利用しています。
+本システムは、2 つの主要な通信チャネルを利用しています。
 
--   **IPC (プロセス間通信)**: `Manager`の**メインプロセス**と**レンダラープロセス**（UI）間の通信です。セキュリティ上の理由から、UIからの操作要求やメインプロセスからのUI更新通知はすべてこのチャネルを経由します。
--   **WebSocket**: `Manager`の**メインプロセス**と、各`Agent`プロセス間の通信です。実際のサーバー操作コマンドの送信や、`Agent`からの結果・状態通知に使用されます。
+- **IPC (プロセス間通信)**: `Manager`の**メインプロセス**と**レンダラープロセス**（UI）間の通信です。セキュリティ上の理由から、UI からの操作要求やメインプロセスからの UI 更新通知はすべてこのチャネルを経由します。
+- **WebSocket**: `Manager`の**メインプロセス**と、各`Agent`プロセス間の通信です。実際のサーバー操作コマンドの送信や、`Agent`からの結果・状態通知に使用されます。
 
 ## 2. メッセージの基本構造と非同期処理
 
-`Manager`と`Agent`間のWebSocketメッセージは、すべて[`@nl-server-manager/common/protocol.js`](common/protocol.js:1)で定義された規約に従います。
+`Manager`と`Agent`間の WebSocket メッセージは、すべて[`@nl-server-manager/common/protocol.js`](common/protocol.js:1)で定義された規約に従います。
 
--   **要求ID (`requestId`):** `Manager`から`Agent`へのすべての要求には、一意の`requestId`が付与されます。
--   **応答 (`Message.OPERATION_RESULT`):** `Agent`は、処理が完了した際に必ず同じ`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。これにより、`Manager`はどの要求に対する応答かを正確に対応付けることができます。
--   **進捗 (`Message.PROGRESS_UPDATE`):** 時間のかかる処理（サーバー作成、Javaインストールなど）の途中経過は、`Message.PROGRESS_UPDATE`メッセージで通知されます。
+- **要求 ID (`requestId`):** `Manager`から`Agent`へのすべての要求には、一意の`requestId`が付与されます。
+- **応答 (`Message.OPERATION_RESULT`):** `Agent`は、処理が完了した際に必ず同じ`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。これにより、`Manager`はどの要求に対する応答かを正確に対応付けることができます。
+- **進捗 (`Message.PROGRESS_UPDATE`):** 時間のかかる処理（サーバー作成、Java インストールなど）の途中経過は、`Message.PROGRESS_UPDATE`メッセージで通知されます。
 
 ## 3. 主要な通信フロー
 
-### フロー1: ManagerからAgentへのサーバー作成要求 (ダウンロードURL解決を含む)
+### フロー 1: Manager から Agent へのサーバー作成要求 (ダウンロード URL 解決を含む)
 
-ユーザーがUIでサーバー作成を要求した際の通信フローです。Managerが外部APIからダウンロードURLを解決し、Agentに伝達します。
+ユーザーが UI でサーバー作成を要求した際の通信フローです。Manager が外部 API からダウンロード URL を解決し、Agent に伝達します。
 
 ```mermaid
 sequenceDiagram
@@ -36,36 +36,36 @@ sequenceDiagram
     Manager_UI->>User: サーバー作成モーダルを表示
     User->>Manager_UI: サーバー設定を選択 (タイプ、バージョン等)
     Manager_UI->>Manager_Main: IPC: proxyToAgent(agentId, {type: Message.CREATE_SERVER, payload: {versionId, serverType, loaderVersion, runtime, ...}})
-    
+
     Manager_Main->>Manager_Main: externalApiServiceでAPIを呼び出し、<br>ダウンロードURLを取得 (キャッシュ利用)
-    
+
     Manager_Main->>Agent: WebSocket: {type: Message.CREATE_SERVER, requestId, payload: {versionId, serverType, loaderVersion, runtime, downloadUrl, ...}}
-    
+
     Agent->>Agent: 受け取ったdownloadUrlから<br>server.jarをダウンロード
     Agent->>Agent: サーバーファイルを設定
-    
+
     Agent-->>Manager_Main: WebSocket: {type: Message.OPERATION_RESULT, requestId, success: true}
     Manager_Main-->>Manager_UI: IPC: 作成完了を通知
     Manager_UI->>User: UIに反映
 ```
 
-1.  **UI → Main (IPC) / バージョン情報の事前取得:** ユーザーが「新規サーバー作成」ボタンをクリックすると、レンダラープロセスはサーバー作成モーダルを開く前に、サポートされている全サーバータイプ（Vanilla, Paper, Mohistなど）のバージョン情報を取得するためのAPI呼び出しを並列でメインプロセスに要求します。
-2.  **UIの構築と表示:** メインプロセスは外部APIから取得した情報をレンダラープロセスに返し、レンダラープロセスはこれをキャッシュします。その後、キャッシュされたデータを用いてバージョン選択ドロップダウンなどを構築し、ユーザーにモーダルを表示します。ユーザーがモーダル内でサーバータイプを切り替えると、API通信は発生せず、キャッシュからUIが即座に更新されます。
+1.  **UI → Main (IPC) / バージョン情報の取得:** ユーザーが「新規サーバー作成」ボタンをクリックすると、`ServerCreateModal`コンポーネントが初期化され、モーダルを表示します。同時に、コンポーネントはサポートされている全サーバータイプ（Vanilla, Paper, Mohist など）のバージョン情報を取得するための API 呼び出しを並列でメインプロセスに要求します。
+2.  **UI の構築と表示:** メインプロセスは外部 API から取得した情報をレンダラープロセスに返し、`ServerCreateModal`はこれを内部ステートに保持します。取得中もモーダルは表示されており、ローディングインジケータ等で進捗をユーザーに伝えます。データ取得が完了すると、バージョン選択ドロップダウンなどが更新されます。ユーザーがモーダル内でサーバータイプを切り替える際には、キャッシュされたデータが即座に使用されます。
 3.  **UI → Main (IPC) / サーバー作成要求:** ユーザーが必要な設定を選択し「作成」ボタンをクリックすると、レンダラープロセスは[`preload.js`](manager/preload.js:1)を介して`proxy-to-agent`チャネルに`Message.CREATE_SERVER`メッセージを送信します。
-4.  **MainプロセスでのダウンロードURL解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバーJARまたはインストーラーのダウンロードURLを外部APIから取得します。この際、`externalApiService`はキャッシュを利用してAPI呼び出しを最適化します。
-5.  **Main → Agent (WebSocket):** メインプロセスは、取得した`downloadUrl`を`Message.CREATE_SERVER`メッセージの`payload`に含め、`requestId`を付与して対象の`Agent`にWebSocketで送信します。
-6.  **Agentでのダウンロードと設定:** `Agent`は`downloadUrl`を受け取り、そのURLからサーバーJARまたはインストーラーをダウンロードし、適切な場所に配置します。
+4.  **Main プロセスでのダウンロード URL 解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバー JAR またはインストーラーのダウンロード URL を外部 API から取得します。この際、`externalApiService`はキャッシュを利用して API 呼び出しを最適化します。
+5.  **Main → Agent (WebSocket):** メインプロセスは、取得した`downloadUrl`を`Message.CREATE_SERVER`メッセージの`payload`に含め、`requestId`を付与して対象の`Agent`に WebSocket で送信します。
+6.  **Agent でのダウンロードと設定:** `Agent`は`downloadUrl`を受け取り、その URL からサーバー JAR またはインストーラーをダウンロードし、適切な場所に配置します。
 7.  **Agent → Main (WebSocket):** `Agent`はサーバー作成処理が完了した後、`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。
-8.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルでUIに通知し、UIは作成完了をユーザーに表示します。
-2.  **MainプロセスでのダウンロードURL解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバーJARまたはインストーラーのダウンロードURLを外部APIから取得します。この際、`externalApiService`はキャッシュを利用してAPI呼び出しを最適化します。
-3.  **Main → Agent (WebSocket):** メインプロセスは、取得した`downloadUrl`を`Message.CREATE_SERVER`メッセージの`payload`に含め、`requestId`を付与して対象の`Agent`にWebSocketで送信します。
-4.  **Agentでのダウンロードと設定:** `Agent`は`downloadUrl`を受け取り、そのURLからサーバーJARまたはインストーラーをダウンロードし、適切な場所に配置します。
-5.  **Agent → Main (WebSocket):** `Agent`はサーバー作成処理が完了した後、`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。
-6.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルでUIに通知し、UIは作成完了をユーザーに表示します。
+8.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルで UI に通知し、UI は作成完了をユーザーに表示します。
+9.  **Main プロセスでのダウンロード URL 解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバー JAR またはインストーラーのダウンロード URL を外部 API から取得します。この際、`externalApiService`はキャッシュを利用して API 呼び出しを最適化します。
+10. **Main → Agent (WebSocket):** メインプロセスは、取得した`downloadUrl`を`Message.CREATE_SERVER`メッセージの`payload`に含め、`requestId`を付与して対象の`Agent`に WebSocket で送信します。
+11. **Agent でのダウンロードと設定:** `Agent`は`downloadUrl`を受け取り、その URL からサーバー JAR またはインストーラーをダウンロードし、適切な場所に配置します。
+12. **Agent → Main (WebSocket):** `Agent`はサーバー作成処理が完了した後、`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。
+13. **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルで UI に通知し、UI は作成完了をユーザーに表示します。
 
-### フロー2: ManagerからAgentへの操作要求 (例: サーバー削除)
+### フロー 2: Manager から Agent への操作要求 (例: サーバー削除)
 
-ユーザーがUIでサーバー削除ボタンをクリックした際の通信フローです。
+ユーザーが UI でサーバー削除ボタンをクリックした際の通信フローです。
 
 ```mermaid
 sequenceDiagram
@@ -87,14 +87,14 @@ sequenceDiagram
     Renderer->>Renderer: UI更新 (通知表示など)
 ```
 
-1.  **UI → Main (IPC):** レンダラープロセスは、[`preload.js`](manager/preload.js:1)を介して`proxy-to-agent`チャネルにIPCメッセージを送信します。
-2.  **Main → Agent (WebSocket):** メインプロセスは、メッセージに`requestId`を付与し、対象の`Agent`にWebSocketで送信します。この`requestId`は完了応答を待つために`pendingOperations`マップに保存されます。
+1.  **UI → Main (IPC):** レンダラープロセスは、[`preload.js`](manager/preload.js:1)を介して`proxy-to-agent`チャネルに IPC メッセージを送信します。
+2.  **Main → Agent (WebSocket):** メインプロセスは、メッセージに`requestId`を付与し、対象の`Agent`に WebSocket で送信します。この`requestId`は完了応答を待つために`pendingOperations`マップに保存されます。
 3.  **Agent → Main (WebSocket):** `Agent`は処理完了後、`requestId`を含む`Message.OPERATION_RESULT`メッセージを返します。
-4.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルでUIに通知します。
+4.  **Main → UI (IPC):** メインプロセスは結果を`operation-result`チャネルで UI に通知します。
 
-### フロー3: AgentからManagerへの自発的な状態更新 (ブロードキャスト)
+### フロー 3: Agent から Manager への自発的な状態更新 (ブロードキャスト)
 
-`Agent`側でのサーバー作成や削除が完了し、全Managerのサーバーリストを更新する必要がある場合のフローです。
+`Agent`側でのサーバー作成や削除が完了し、全 Manager のサーバーリストを更新する必要がある場合のフローです。
 
 ```mermaid
 sequenceDiagram
@@ -111,12 +111,12 @@ sequenceDiagram
 ```
 
 1.  **Agent → Main (WebSocket):** `Agent`は、接続している**すべての**`Manager`クライアントに対し、`Message.SERVER_LIST_UPDATE`メッセージをブロードキャストします。これには`requestId`は含まれません。
-2.  **Main → UI (IPC):** メインプロセスは受信したリストを`server-list-update`チャネルでUIに転送します。
-3.  **UI更新:** レンダラーは新しいサーバーリストを元に画面を再描画します。
+2.  **Main → UI (IPC):** メインプロセスは受信したリストを`server-list-update`チャネルで UI に転送します。
+3.  **UI 更新:** レンダラーは新しいサーバーリストを元に画面を再描画します。
 
-### フロー3: Agent内部イベントの通知 (例: サーバーログ)
+### フロー 3: Agent 内部イベントの通知 (例: サーバーログ)
 
-実行中のサーバープロセスが新しいログを出力した場合など、Agent内部で発生したイベントを通知するフローです。
+実行中のサーバープロセスが新しいログを出力した場合など、Agent 内部で発生したイベントを通知するフローです。
 
 ```mermaid
 sequenceDiagram
@@ -128,7 +128,7 @@ sequenceDiagram
     Agent->>Main: WebSocket: {type: Message.SERVER_UPDATE, payload: {serverId, type: 'status_change', payload: ServerStatus.STARTING}}
     Main->>Renderer: IPC: 'server-update'
     Renderer->>Renderer: UIを「起動中」に更新
-    
+
     ServerProcess->>Agent: ログを出力 ("... Done ...")
     Agent->>Agent: 起動完了を検知
     Agent->>Main: WebSocket: {type: Message.SERVER_UPDATE, payload: {serverId, type: 'status_change', payload: ServerStatus.RUNNING}}
@@ -136,11 +136,11 @@ sequenceDiagram
     Renderer->>Renderer: UIを「起動済み」に更新
 ```
 
-1.  **起動開始通知:** `startServer`関数が呼ばれると、`Agent`は即座にステータスが`ServerStatus.STARTING`になったことを`Manager`に通知します。UIはこれを受けて「起動中」の表示に切り替わります。
+1.  **起動開始通知:** `startServer`関数が呼ばれると、`Agent`は即座にステータスが`ServerStatus.STARTING`になったことを`Manager`に通知します。UI はこれを受けて「起動中」の表示に切り替わります。
 2.  **ログ監視と完了検知:** `Agent`はサーバープロセスの標準出力を監視し、起動完了を示す特定のログ（例: "Done"）を待ち受けます。
-3.  **起動完了通知:** 完了を示すログを検知すると、`Agent`はステータスが`ServerStatus.RUNNING`になったことを`Manager`に通知します。UIはこれを受けて「起動済み」の表示に更新します。
+3.  **起動完了通知:** 完了を示すログを検知すると、`Agent`はステータスが`ServerStatus.RUNNING`になったことを`Manager`に通知します。UI はこれを受けて「起動済み」の表示に更新します。
 
-### フロー4: EULA同意フロー
+### フロー 4: EULA 同意フロー
 
 サーバー初回起動時など、`eula.txt`への同意が必要な場合のインタラクティブなフローです。
 
@@ -177,15 +177,15 @@ sequenceDiagram
 ```
 
 1.  **起動要求:** 通常のサーバー起動フローと同様に、`Manager`から`Agent`へ`Message.CONTROL_SERVER`メッセージが送信されます。
-2.  **EULAチェック:** `Agent`内の`startServer`関数が、サーバープロセスを起動する前に`eula.txt`をチェックします。
-3.  **同意要求 (Agent → Manager):** EULAが未同意の場合、`Agent`はサーバーを起動しません。この状態はエラーとして扱われず、代わりに`Message.REQUIRE_EULA_AGREEMENT`メッセージを`Manager`に返します。`payload`には`eula.txt`の現在の内容が含まれます。
-4.  **モーダル表示:** `Manager`のUIは、このメッセージを受けてEULA同意モーダルをユーザーに提示します。
+2.  **EULA チェック:** `Agent`内の`startServer`関数が、サーバープロセスを起動する前に`eula.txt`をチェックします。
+3.  **同意要求 (Agent → Manager):** EULA が未同意の場合、`Agent`はサーバーを起動しません。この状態はエラーとして扱われず、代わりに`Message.REQUIRE_EULA_AGREEMENT`メッセージを`Manager`に返します。`payload`には`eula.txt`の現在の内容が含まれます。
+4.  **モーダル表示:** `Manager`の UI は、このメッセージを受けて EULA 同意モーダルをユーザーに提示します。
 5.  **同意/拒否 (Manager → Agent):** ユーザーが「同意する」をクリックすると、`Manager`は`Message.ACCEPT_EULA`メッセージを`Agent`に送信します。
-6.  **EULA更新と再起動:** `Agent`は`eula.txt`を`eula=true`に更新し、再度`startServer`処理を試行します。成功すれば、通常の`Message.OPERATION_RESULT`を返してフローを完了します。
+6.  **EULA 更新と再起動:** `Agent`は`eula.txt`を`eula=true`に更新し、再度`startServer`処理を試行します。成功すれば、通常の`Message.OPERATION_RESULT`を返してフローを完了します。
 
-### フロー5: メトリクスストリーミング (リアルタイム更新)
+### フロー 5: メトリクスストリーミング (リアルタイム更新)
 
-サーバー詳細画面などで、CPU使用率やプレイヤー数などのメトリクスをリアルタイムに更新するためのフローです。
+サーバー詳細画面などで、CPU 使用率やプレイヤー数などのメトリクスをリアルタイムに更新するためのフローです。
 
 ```mermaid
 sequenceDiagram
@@ -207,7 +207,7 @@ sequenceDiagram
         Renderer->>Main: IPC: proxyToAgent(agentId, {type: Message.START_METRICS_STREAM, streamId, targetType: 'gameServer', targetId: serverId})
         Main->>Agent: WebSocket: {type: Message.START_METRICS_STREAM, requestId, payload: {streamId, targetType, targetId}}
     end
-    
+
     loop 毎秒 (ストリーム実行中)
         Agent->>Agent: メトリクス収集 (RCON, systeminformation)
         Agent-->>Main: WebSocket: {type: Message.GAME_SERVER_METRICS_UPDATE, payload: {...}}
@@ -224,14 +224,14 @@ sequenceDiagram
 ```
 
 1.  **ストリーム開始要求:** メトリクスストリーミングは、以下のいずれかのタイミングで開始されます。
-    -   ユーザーがサーバー詳細画面を開いたとき。
-    -   ユーザーがサーバー詳細画面を閲覧中に、対象サーバーのステータスが「起動完了 (`ServerStatus.RUNNING`)」に変化したとき。
-    いずれの場合も、`Manager`は`Message.START_METRICS_STREAM`メッセージを`Agent`に送信します。
-2.  **メトリクス収集と送信:** `Agent`は、この要求を受け取ると、1秒ごとにメトリクス（TPS、プレイヤー数、CPU/RAM使用率など）を収集し、`Message.GAME_SERVER_METRICS_UPDATE`または`Message.PHYSICAL_SERVER_METRICS_UPDATE`メッセージで`Manager`に送信し続けます。
-3.  **UIのリアルタイム更新:** `Manager`は受信したメトリクスデータを使って、UIの状態をリアルタイムで更新します。
+    - ユーザーがサーバー詳細画面を開いたとき。
+    - ユーザーがサーバー詳細画面を閲覧中に、対象サーバーのステータスが「起動完了 (`ServerStatus.RUNNING`)」に変化したとき。
+      いずれの場合も、`Manager`は`Message.START_METRICS_STREAM`メッセージを`Agent`に送信します。
+2.  **メトリクス収集と送信:** `Agent`は、この要求を受け取ると、1 秒ごとにメトリクス（TPS、プレイヤー数、CPU/RAM 使用率など）を収集し、`Message.GAME_SERVER_METRICS_UPDATE`または`Message.PHYSICAL_SERVER_METRICS_UPDATE`メッセージで`Manager`に送信し続けます。
+3.  **UI のリアルタイム更新:** `Manager`は受信したメトリクスデータを使って、UI の状態をリアルタイムで更新します。
 4.  **ストリーム停止要求:** ユーザーが詳細画面を閉じると、`Manager`は`Message.STOP_METRICS_STREAM`メッセージを`Agent`に送信し、`Agent`はメトリクスの収集と送信を停止します。
 
-### フロー6: サーバープロパティの更新
+### フロー 6: サーバープロパティの更新
 
 ユーザーがサーバープロパティを変更し、「変更を保存」ボタンをクリックした際のフローです。
 
@@ -254,14 +254,14 @@ sequenceDiagram
     Renderer->>User: 「保存しました」通知を表示
 ```
 
-1.  **UI → Main (IPC):** ユーザーが保存ボタンをクリックすると、レンダラーはUI上のすべてのプロパティ入力から値を取得し、`proxyToAgent` IPCチャネルを通じて`Message.UPDATE_SERVER_PROPERTIES`メッセージをメインプロセスに中継を依頼します。
+1.  **UI → Main (IPC):** ユーザーが保存ボタンをクリックすると、レンダラーは UI 上のすべてのプロパティ入力から値を取得し、`proxyToAgent` IPC チャネルを通じて`Message.UPDATE_SERVER_PROPERTIES`メッセージをメインプロセスに中継を依頼します。
 2.  **Main → Agent (WebSocket):** メインプロセスは要求に `requestId` を付与し、`Agent` に `Message.UPDATE_SERVER_PROPERTIES` メッセージを送信します。
-3.  **Agentでの処理:** `Agent` は受信したプロパティで `server.properties` ファイルと `nl-server_manager.json` の両方をアトミックに更新します。
-4.  **Agent → Main → UI (レスポンス):** `Agent` は処理結果を `Message.OPERATION_RESULT` で返します。成功した場合、UIは状態を更新し、ユーザーに成功通知を表示します。
+3.  **Agent での処理:** `Agent` は受信したプロパティで `server.properties` ファイルと `nl-server_manager.json` の両方をアトミックに更新します。
+4.  **Agent → Main → UI (レスポンス):** `Agent` は処理結果を `Message.OPERATION_RESULT` で返します。成功した場合、UI は状態を更新し、ユーザーに成功通知を表示します。
 
-### フロー7: サーバー設定の更新（名前、メモ）
+### フロー 7: サーバー設定の更新（名前、メモ）
 
-ユーザーがUI上でサーバー名やメモをインラインで編集した際のフローです。`focusout`やメモ編集エリアを閉じるなどのイベントをトリガーとします。
+ユーザーが UI 上でサーバー名やメモをインラインで編集した際のフローです。`focusout`やメモ編集エリアを閉じるなどのイベントをトリガーとします。
 
 ```mermaid
 sequenceDiagram
@@ -273,7 +273,7 @@ sequenceDiagram
     User->>Renderer: サーバー名またはメモを編集
     User->>Renderer: フォーカスを外す or メモを閉じる (イベント発火)
     Renderer->>Renderer: 変更前の値と現在の値を比較
-    
+
     alt 変更がある場合
         Renderer->>Main: IPC: proxyToAgent(agentId, {type: Message.UPDATE_SERVER, serverId, config: {server_name: "新しい名前"}})
         Main->>Agent: WebSocket: {type: Message.UPDATE_SERVER, requestId, payload: {serverId, config: {...}}}
@@ -286,14 +286,14 @@ sequenceDiagram
 ```
 
 1.  **ユーザー操作:** ユーザーがサーバー名やメモを編集し、フォーカスを外すなどの保存トリガーとなる操作を行います。
-2.  **変更検知:** `renderer.js` はイベントを検知し、メモリ上の`state`と現在のUIの値を比較して、実際の内容変更があったかを確認します。
+2.  **変更検知:** `renderer.js` はイベントを検知し、メモリ上の`state`と現在の UI の値を比較して、実際の内容変更があったかを確認します。
 3.  **UI → Main → Agent (リクエスト):** 変更があった場合のみ、レンダラーは `proxyToAgent` を通じて `Message.UPDATE_SERVER` メッセージの送信を要求します。`payload`の`config`オブジェクトには、`{ server_name: "新しい名前" }` や `{ memo: "新しいメモ" }` のように、変更があったフィールドのみが含まれます。
-4.  **Agentでの処理:** `Agent` は受信した`config`オブジェクトを既存の設定にマージし、`nl-server_manager.json` ファイルを更新して変更を永続化します。
-5.  **Agent → Main → UI (レスポンス):** `Agent` は処理結果（更新後の`config`を含む）を `Message.OPERATION_RESULT` で返します。UIはこれを受けて`state`を最新の状態に保ち、ユーザーに成功通知を表示します。
+4.  **Agent での処理:** `Agent` は受信した`config`オブジェクトを既存の設定にマージし、`nl-server_manager.json` ファイルを更新して変更を永続化します。
+5.  **Agent → Main → UI (レスポンス):** `Agent` は処理結果（更新後の`config`を含む）を `Message.OPERATION_RESULT` で返します。UI はこれを受けて`state`を最新の状態に保ち、ユーザーに成功通知を表示します。
 
-### フロー8: エージェントの登録
+### フロー 8: エージェントの登録
 
-ユーザーがUIから新しいエージェントを登録する際のフローです。このフローはAgentとの通信を伴わず、Manager内部で完結します。
+ユーザーが UI から新しいエージェントを登録する際のフローです。このフローは Agent との通信を伴わず、Manager 内部で完結します。
 
 ```mermaid
 sequenceDiagram
@@ -319,17 +319,17 @@ sequenceDiagram
 ```
 
 1.  **UI → Main (IPC):** レンダラープロセスは、ユーザーが入力した設定情報（エイリアス、IP、ポート）を[`preload.js`](manager/preload.js:1)経由で`add-agent`チャネルに送信します。
-2.  **Mainプロセスでの処理:**
-    *   `mainHandlers.js` はリクエストを受け取ります。
-    *   `uuidv4`で新しいAgentの一意なIDを生成します。
-    *   `storeManager.js` を呼び出し、新しいAgent情報を`config.json`に永続化します。
-    *   `agentManager.js` を呼び出し、新しいAgentへのWebSocket接続シーケンスを開始します。
-3.  **Main → UI (IPC):** `agentManager`はAgentリストの変更を検知し、`agent-list`チャネルを通じて更新されたリストをUIにブロードキャストします。
-4.  **UI更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。
+2.  **Main プロセスでの処理:**
+    - `mainHandlers.js` はリクエストを受け取ります。
+    - `uuidv4`で新しい Agent の一意な ID を生成します。
+    - `storeManager.js` を呼び出し、新しい Agent 情報を`config.json`に永続化します。
+    - `agentManager.js` を呼び出し、新しい Agent への WebSocket 接続シーケンスを開始します。
+3.  **Main → UI (IPC):** `agentManager`は Agent リストの変更を検知し、`agent-list`チャネルを通じて更新されたリストを UI にブロードキャストします。
+4.  **UI 更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。
 
-### フロー9: エージェントの削除
+### フロー 9: エージェントの削除
 
-ユーザーがUIから既存のエージェントを削除する際のフローです。
+ユーザーが UI から既存のエージェントを削除する際のフローです。
 
 ```mermaid
 sequenceDiagram
@@ -354,9 +354,9 @@ sequenceDiagram
 ```
 
 1.  **UI → Main (IPC):** レンダラープロセスは、削除対象の`agentId`を[`preload.js`](manager/preload.js:1)経由で`delete-agent`チャネルに送信します。
-2.  **Mainプロセスでの処理:**
-    *   `mainHandlers.js` はリクエストを受け取ります。
-    *   `agentManager.js` を呼び出し、対象AgentのWebSocket接続を終了させ、管理マップから削除します。
-    *   `storeManager.js` を呼び出し、`config.json`から対象Agentの情報を削除して永続化します。
-3.  **Main → UI (IPC):** `agentManager`はAgentリストの変更を検知し、`agent-list`チャネルを通じて更新されたリストをUIにブロードキャストします。
-4.  **UI更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。
+2.  **Main プロセスでの処理:**
+    - `mainHandlers.js` はリクエストを受け取ります。
+    - `agentManager.js` を呼び出し、対象 Agent の WebSocket 接続を終了させ、管理マップから削除します。
+    - `storeManager.js` を呼び出し、`config.json`から対象 Agent の情報を削除して永続化します。
+3.  **Main → UI (IPC):** `agentManager`は Agent リストの変更を検知し、`agent-list`チャネルを通じて更新されたリストを UI にブロードキャストします。
+4.  **UI 更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。
