@@ -141,8 +141,8 @@ export function setupIpcHandlers(mainWindow) {
     });
 
     // NeoForge Version Handling
-    ipcMain.handle('get-neoforge-versions', async (event, { mcVersion }) => {
-        return await externalApiService.getNeoForgeVersions(mcVersion);
+    ipcMain.handle('get-neoforge-versions', async (event, { mcVersion, forceRefresh }) => {
+        return await externalApiService.getNeoForgeVersions(mcVersion, forceRefresh);
     });
 
     // Paper Version Handling
@@ -151,8 +151,8 @@ export function setupIpcHandlers(mainWindow) {
     });
 
     // Paper Build Handling
-    ipcMain.handle('get-paper-builds', async (event, { mcVersion }) => {
-        return await externalApiService.getPaperBuilds(mcVersion);
+    ipcMain.handle('get-paper-builds', async (event, { mcVersion, forceRefresh }) => {
+        return await externalApiService.getPaperBuilds(mcVersion, forceRefresh);
     });
 
     // Mohist Version Handling
@@ -161,8 +161,8 @@ export function setupIpcHandlers(mainWindow) {
     });
 
     // Mohist Build Handling
-    ipcMain.handle('get-mohist-builds', async (event, { mcVersion }) => {
-        return await externalApiService.getMohistBuilds(mcVersion);
+    ipcMain.handle('get-mohist-builds', async (event, { mcVersion, forceRefresh }) => {
+        return await externalApiService.getMohistBuilds(mcVersion, forceRefresh);
     });
 
 }

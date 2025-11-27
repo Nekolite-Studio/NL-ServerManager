@@ -12,11 +12,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getForgeVersions: () => ipcRenderer.invoke('get-forge-versions'),
   getFabricVersions: () => ipcRenderer.invoke('get-fabric-versions'),
   getQuiltVersions: () => ipcRenderer.invoke('get-quilt-versions'),
-  getNeoForgeVersions: (mcVersion) => ipcRenderer.invoke('get-neoforge-versions', { mcVersion }),
+  getNeoForgeVersions: (mcVersion, forceRefresh = false) => ipcRenderer.invoke('get-neoforge-versions', { mcVersion, forceRefresh }),
   getPaperVersions: () => ipcRenderer.invoke('get-paper-versions'),
   getMohistVersions: () => ipcRenderer.invoke('get-mohist-versions'),
-  getMohistBuilds: (mcVersion) => ipcRenderer.invoke('get-mohist-builds', { mcVersion }),
-  getPaperBuilds: (mcVersion) => ipcRenderer.invoke('get-paper-builds', { mcVersion }),
+  getMohistBuilds: (mcVersion, forceRefresh = false) => ipcRenderer.invoke('get-mohist-builds', { mcVersion, forceRefresh }),
+  getPaperBuilds: (mcVersion, forceRefresh = false) => ipcRenderer.invoke('get-paper-builds', { mcVersion, forceRefresh }),
 
   // Agent Management
   addAgent: (config) => ipcRenderer.invoke('add-agent', config),

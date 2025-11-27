@@ -25,6 +25,10 @@ function detectJavaByDate(date) {
  * @returns {Promise<number>}
  */
 async function getRequiredJavaVersion(mcVersion, serverType = 'vanilla') {
+    if (!mcVersion) {
+        throw new Error('Minecraft version (mcVersion) is required');
+    }
+
     // Mohistは独自のキャッシュキーを持つ
     const cacheKey = serverType === 'mohist'
         ? `javaVersion-${mcVersion}-${serverType}`
@@ -97,13 +101,13 @@ async function getJavaDownloadInfo(feature_version, os, arch) {
         } else {
             console.warn('No download link or file size found in Adoptium API response.');
             const result = { success: false, error: 'Download information not found.' };
-            setCachedData(cacheKey, result); // エラーでもキャッシュする
+            setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
             return result;
         }
     } catch (error) {
         console.error('Error fetching Java download info from Adoptium API:', error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -146,7 +150,7 @@ async function getForgeVersions() {
     } catch (error) {
         console.error('Failed to fetch Forge versions:', error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -168,7 +172,7 @@ async function getFabricVersions() {
     } catch (error) {
         console.error('Failed to fetch Fabric versions:', error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -190,7 +194,7 @@ async function getQuiltVersions() {
     } catch (error) {
         console.error('Failed to fetch Quilt versions:', error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -200,10 +204,12 @@ async function getQuiltVersions() {
  * @param {string} mcVersion Minecraftバージョン
  * @returns {Promise<{success: boolean, versions?: Array, error?: string}>}
  */
-async function getNeoForgeVersions(mcVersion) {
+async function getNeoForgeVersions(mcVersion, forceRefresh = false) {
     const cacheKey = `neoForgeVersions-${mcVersion}`;
-    const cachedData = getCachedData(cacheKey);
-    if (cachedData) return cachedData;
+    if (!forceRefresh) {
+        const cachedData = getCachedData(cacheKey);
+        if (cachedData) return cachedData;
+    }
 
     try {
         const response = await axios.get('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml');
@@ -285,7 +291,7 @@ async function getNeoForgeVersions(mcVersion) {
     } catch (error) {
         console.error('Failed to fetch NeoForge versions:', error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -320,7 +326,7 @@ async function getPaperVersions() {
     } catch (error) {
         console.error('Failed to fetch Paper versions from v3 API:', error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -330,9 +336,13 @@ async function getPaperVersions() {
  * @param {string} mcVersion - MinecraftのバージョンID (例: '1.21.10')
  * @returns {Promise<{success: boolean, builds?: Array, error?: string}>}
  */
-async function getPaperBuilds(mcVersion) {
+async function getPaperBuilds(mcVersion, forceRefresh = false) {
     const cacheKey = `paperVersions_v3`;
-    let cachedData = getCachedData(cacheKey);
+    let cachedData = null;
+    
+    if (!forceRefresh) {
+        cachedData = getCachedData(cacheKey);
+    }
 
     // キャッシュがない場合は取得を試みる
     if (!cachedData) {
@@ -385,7 +395,7 @@ async function getMohistVersions() {
     } catch (error) {
         console.error('Failed to fetch Mohist versions:', error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -395,10 +405,12 @@ async function getMohistVersions() {
  * @param {string} mcVersion - MinecraftのバージョンID (例: '1.12.2')
  * @returns {Promise<{success: boolean, builds?: Array, error?: string}>}
  */
-async function getMohistBuilds(mcVersion) {
+async function getMohistBuilds(mcVersion, forceRefresh = false) {
     const cacheKey = `mohistBuilds-${mcVersion}`;
-    const cachedData = getCachedData(cacheKey);
-    if (cachedData) return cachedData;
+    if (!forceRefresh) {
+        const cachedData = getCachedData(cacheKey);
+        if (cachedData) return cachedData;
+    }
 
     try {
         const response = await axios.get(`https://api.mohistmc.com/project/mohist/${mcVersion}/builds`);
@@ -410,7 +422,7 @@ async function getMohistBuilds(mcVersion) {
     } catch (error) {
         console.error(`Failed to fetch Mohist builds for ${mcVersion}:`, error);
         const result = { success: false, error: error.message };
-        setCachedData(cacheKey, result); // エラーでもキャッシュする
+        setCachedData(cacheKey, result, true); // エラーは短期間キャッシュするか、キャッシュしない
         return result;
     }
 }
@@ -450,8 +462,14 @@ function getCachedData(key) {
  * データをキャッシュに保存する
  * @param {string} key - キャッシュキー
  * @param {any} data - 保存するデータ
+ * @param {boolean} isError - エラーデータかどうか (trueの場合キャッシュしない、または短期間のみ)
  */
-function setCachedData(key, data) {
+function setCachedData(key, data, isError = false) {
+    if (isError) {
+        console.log(`[externalApiService] Skipping cache for error result: ${key}`);
+        return; // エラーはキャッシュしない (即時リトライ可能にするため)
+    }
+
     const cache = getApiCache();
     cache[key] = {
         timestamp: Date.now(),

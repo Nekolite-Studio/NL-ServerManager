@@ -11,6 +11,7 @@ export class ServerCreateModal {
       cachedPaperVersions: null,
       cachedMohistVersions: null,
       cachedMohistBuilds: new Map(),
+      lastRefreshTime: 0, // For cooldown
     };
 
     this.serverTypes = [
@@ -128,7 +129,10 @@ export class ServerCreateModal {
   }
 
   init() {
-    if (!this.els.overlay) return;
+    if (!this.els.overlay || !this.els.createBtn) {
+        console.error("ServerCreateModal: Critical DOM elements missing.");
+        return;
+    }
 
     this.renderTypeDropdown();
     this.setupListeners();
@@ -186,6 +190,15 @@ export class ServerCreateModal {
 
     this.els.refreshBuildBtn.addEventListener("click", () => {
       if (this.state.selectedType.id === "vanilla") return;
+
+      const now = Date.now();
+      if (now - this.state.lastRefreshTime < 15000) {
+        const remaining = Math.ceil((15000 - (now - this.state.lastRefreshTime)) / 1000);
+        window.showNotification(`更新は15秒に1回のみ可能です (あと${remaining}秒)`, "warning");
+        return;
+      }
+      this.state.lastRefreshTime = now;
+
       this.animateButton(this.els.refreshBuildBtn);
       this.updateBuildList(true); // Force refresh
     });
@@ -493,24 +506,23 @@ export class ServerCreateModal {
           this.addBuildOption(v.version, v.version);
         });
       } else if (type === "neoforge") {
-        const result = await window.electronAPI.getNeoForgeVersions(mcVer);
+        const result = await window.electronAPI.getNeoForgeVersions(mcVer, isRefresh);
         this.els.buildSelect.innerHTML = "";
         if (result.success && result.versions.length > 0) {
           result.versions.forEach((v) => this.addBuildOption(v, v));
         }
       } else if (type === "paper") {
-        const result = await window.electronAPI.getPaperBuilds(mcVer);
+        const result = await window.electronAPI.getPaperBuilds(mcVer, isRefresh);
         this.els.buildSelect.innerHTML = "";
         if (result.success && result.builds.length > 0) {
-          // Reverse to show latest first
+          // Builds are already sorted descending (newest first) from API
           result.builds
-            .reverse()
             .forEach((b) => this.addBuildOption(b, `Build #${b}`));
         }
       } else if (type === "mohist") {
         let builds = this.state.cachedMohistBuilds.get(mcVer);
         if (!builds || isRefresh) {
-          const result = await window.electronAPI.getMohistBuilds(mcVer);
+          const result = await window.electronAPI.getMohistBuilds(mcVer, isRefresh);
           if (result.success) {
             builds = result.builds;
             this.state.cachedMohistBuilds.set(mcVer, builds);
@@ -560,7 +572,7 @@ export class ServerCreateModal {
 
   async updateJavaVersion() {
     const mcVer = this.els.mcVersionSelect.value;
-    if (!mcVer) {
+    if (!mcVer || mcVer === "No versions found") {
       this.els.javaVer.textContent = "Unknown";
       return;
     }
