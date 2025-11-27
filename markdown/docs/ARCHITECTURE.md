@@ -67,7 +67,7 @@ graph TD
 - **`src/services/agentManager.js`:** 全ての`agent`との WebSocket 接続を確立・維持・再接続する。UI からの要求に応じて Agent の動的な追加・削除を行い、Agent リストの管理と永続化も担当する。
 - **`src/ipc/mainHandlers.js`:** Renderer プロセスからの IPC 要求を受け取り、適切なサービス（AgentManager や ExternalApiService）に処理を委譲する。
 - **`src/storeManager.js`:** `electron-store`を利用して、登録済み Agent リストやウィンドウサイズをディスクに保存する。**スキーマ検証を伴う堅牢な設定管理**を行い、設定破損時にはユーザーに通知し、バックアップと復旧オプションを提供する。
-- **`src/services/externalApiService.js`:** Mojang（バージョン情報）や Adoptium（Java ダウンロード情報）などの外部 API との通信、およびサーバー JAR のダウンロード URL 解決を担当する。**HTTP クライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。また、**取得した API 応答を`electron-store`を利用してキャッシュし、外部 API へのリクエスト数を削減する。**
+- **`src/services/externalApiService.js`:** Mojang（バージョン情報）や Adoptium（Java ダウンロード情報）などの外部 API との通信、およびサーバー JAR のダウンロード URL 解決を担当する。**HTTP クライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。また、**取得した API 応答を`electron-store`を利用してキャッシュし、外部 API へのリクエスト数を削減する。** ただし、エラー応答はキャッシュせず（または短期間のみキャッシュ）、一時的な障害からの即時回復を可能にする。また、UI からの強制更新（Force Refresh）要求にも対応し、キャッシュをバイパスして最新データを取得する機能を持つ。
 - **`src/services/propertyAnnotations.js`:** `server.properties` の UI 表示用メタデータ（説明文、グループ分け、入力タイプなど）を提供する。`@nl-server-manager/common` の Zod スキーマから動的に生成される。
 
 #### Renderer プロセス (UI)
