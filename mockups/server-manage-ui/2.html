@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nekolite-Server Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: { 750: '#2d3748', 850: '#1a202c', 900: '#111827', 950: '#0d1117' },
+                        primary: { DEFAULT: '#4f46e5', hover: '#4338ca', light: '#818cf8' },
+                        success: '#10b981', warning: '#f59e0b', danger: '#ef4444'
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        .dark ::-webkit-scrollbar-thumb { background: #4b5563; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        body { font-size: 0.9rem; }
+        
+        /* モーダルアニメーション */
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: opacity 0.2s, transform 0.2s; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-300 h-screen flex flex-col overflow-hidden antialiased transition-colors duration-300">
+
+    <!-- === アプリケーションヘッダー === -->
+    <header class="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex-shrink-0 z-40 shadow-sm transition-colors duration-300">
+        <div class="flex justify-between items-center w-full">
+            
+            <!-- タイトル & ロゴ -->
+            <div class="flex items-center gap-3">
+                <div class="bg-primary/10 p-2 rounded-lg">
+                    <i data-lucide="cat" class="text-primary w-5 h-5"></i>
+                </div>
+                <span class="font-bold text-lg text-gray-800 dark:text-white tracking-tight">Nekolite-Server Manager</span>
+            </div>
+
+            <!-- 右側コントロール -->
+            <div class="flex items-center gap-3">
+                <!-- 現在のモード表示バッジ -->
+                <div class="hidden sm:flex items-center px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
+                    <i data-lucide="layout" class="w-3 h-3 mr-2"></i>
+                    <span id="current-layout-name">Accordion List</span>
+                </div>
+
+                <div class="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
+
+                <!-- テーマ切り替え -->
+                <button onclick="toggleTheme()" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors" title="Toggle Theme">
+                    <i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+                    <i data-lucide="sun" class="w-5 h-5 block dark:hidden"></i>
+                </button>
+
+                <!-- 設定ボタン -->
+                <button onclick="toggleSettingsModal(true)" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors" title="Settings">
+                    <i data-lucide="settings" class="w-5 h-5 animate-spin-slow-hover"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- === メインコンテンツエリア === -->
+    <div id="app-container" class="flex-1 flex overflow-hidden relative bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+        <!-- Content injected by JS -->
+    </div>
+
+    <!-- === 設定モーダル === -->
+    <div id="settings-modal" class="fixed inset-0 z-50 hidden">
+        <!-- 背景 -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity" onclick="toggleSettingsModal(false)"></div>
+        
+        <!-- モーダルコンテンツ -->
+        <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div class="bg-white dark:bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 pointer-events-auto transform transition-all scale-100">
+                
+                <!-- ヘッダー -->
+                <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i data-lucide="settings-2" class="w-5 h-5 text-primary"></i>
+                        Settings
+                    </h2>
+                    <button onclick="toggleSettingsModal(false)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <!-- ボディ -->
+                <div class="p-6 space-y-6">
+                    
+                    <!-- UI Layout Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Dashboard Layout</label>
+                        <div class="grid grid-cols-1 gap-3">
+                            <!-- Option 1: Accordion -->
+                            <label class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:has-[:checked]:bg-primary/10">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 dark:text-gray-400">
+                                        <i data-lucide="list" class="w-4 h-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-sm text-gray-900 dark:text-gray-200">Accordion List</div>
+                                        <div class="text-xs text-gray-500">Simple vertical list. Good for small clusters.</div>
+                                    </div>
+                                </div>
+                                <input type="radio" name="layout" value="accordion" class="accent-primary w-4 h-4" onchange="switchLayout('accordion')">
+                            </label>
+
+                            <!-- Option 2: Kanban -->
+                            <label class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:has-[:checked]:bg-primary/10">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 dark:text-gray-400">
+                                        <i data-lucide="columns" class="w-4 h-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-sm text-gray-900 dark:text-gray-200">Kanban Board</div>
+                                        <div class="text-xs text-gray-500">Horizontal columns per agent.</div>
+                                    </div>
+                                </div>
+                                <input type="radio" name="layout" value="kanban" class="accent-primary w-4 h-4" onchange="switchLayout('kanban')">
+                            </label>
+
+                            <!-- Option 3: Tree Grid -->
+                            <label class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:has-[:checked]:bg-primary/10">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 dark:text-gray-400">
+                                        <i data-lucide="table" class="w-4 h-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-sm text-gray-900 dark:text-gray-200">Tree Data Grid</div>
+                                        <div class="text-xs text-gray-500">High density table view.</div>
+                                    </div>
+                                </div>
+                                <input type="radio" name="layout" value="treegrid" class="accent-primary w-4 h-4" onchange="switchLayout('treegrid')">
+                            </label>
+
+                            <!-- Option 4: Sidebar Filter -->
+                            <label class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:has-[:checked]:bg-primary/10">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 dark:text-gray-400">
+                                        <i data-lucide="sidebar" class="w-4 h-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-sm text-gray-900 dark:text-gray-200">Sidebar Filter</div>
+                                        <div class="text-xs text-gray-500">Global list with agent filtering.</div>
+                                    </div>
+                                </div>
+                                <input type="radio" name="layout" value="sidebar" class="accent-primary w-4 h-4" onchange="switchLayout('sidebar')">
+                            </label>
+
+                            <!-- Option 5: Tabbed Focus -->
+                            <label class="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:has-[:checked]:bg-primary/10">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 dark:text-gray-400">
+                                        <i data-lucide="library-tab" class="w-4 h-4"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-sm text-gray-900 dark:text-gray-200">Tabbed Focus</div>
+                                        <div class="text-xs text-gray-500">Focus on one agent at a time.</div>
+                                    </div>
+                                </div>
+                                <input type="radio" name="layout" value="tabs" class="accent-primary w-4 h-4" onchange="switchLayout('tabs')">
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- フッター -->
+                <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700 rounded-b-xl flex justify-end">
+                    <button onclick="toggleSettingsModal(false)" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-lg shadow transition-colors">
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- === JavaScript Logic === -->
+    <script>
+        // --- State ---
+        const state = {
+            layout: 'accordion',
+            theme: 'dark'
+        };
+
+        // --- Mock Data ---
+        const data = {
+            agents: [
+                {
+                    id: 'agent1', name: 'Main PC (Windows)', ip: '192.168.1.10', status: 'online',
+                    metrics: { cpu: 15, ram: 38, disk: 60 },
+                    servers: [
+                        { id: 's1', name: 'Survival S4', type: 'Vanilla', version: '1.21.1', status: 'running', players: 3, maxPlayers: 20, tps: 20.0 },
+                        { id: 's2', name: 'Modpack Create', type: 'Forge', version: '1.20.1', status: 'stopped', players: 0, maxPlayers: 20, tps: 0 }
+                    ]
+                },
+                {
+                    id: 'agent2', name: 'Ubuntu Server', ip: '192.168.1.50', status: 'online',
+                    metrics: { cpu: 45, ram: 72, disk: 40 },
+                    servers: [
+                        { id: 's3', name: 'Lobby', type: 'Paper', version: '1.21', status: 'running', players: 12, maxPlayers: 100, tps: 19.8 },
+                        { id: 's4', name: 'Skyblock', type: 'Paper', version: '1.20.4', status: 'running', players: 8, maxPlayers: 50, tps: 20.0 },
+                        { id: 's5', name: 'Test World', type: 'Fabric', version: '1.21', status: 'stopped', players: 0, maxPlayers: 10, tps: 0 }
+                    ]
+                },
+                {
+                    id: 'agent3', name: 'Mac Mini', ip: '192.168.1.15', status: 'offline',
+                    metrics: { cpu: 0, ram: 0, disk: 0 },
+                    servers: []
+                }
+            ]
+        };
+
+        // --- Helper Functions ---
+        const getStatusColor = (status) => {
+            if (status === 'running') return 'text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-400/10 border-green-200 dark:border-green-400/20';
+            if (status === 'stopped') return 'text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/30 border-gray-200 dark:border-gray-600/30';
+            if (status === 'offline') return 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-400/10 border-red-200 dark:border-red-400/20';
+            return 'text-yellow-400';
+        };
+        
+        const getTypeBadge = (type) => {
+            const styles = {
+                'Vanilla': 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700/30',
+                'Forge': 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700/30',
+                'Paper': 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700/30',
+                'Fabric': 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700/30'
+            };
+            return `<span class="px-1.5 py-0.5 rounded text-[10px] border ${styles[type] || 'bg-gray-100 dark:bg-gray-700'}">${type}</span>`;
+        };
+
+        // --- Layout Renderers (Identical logic, adjusted classes for light/dark) ---
+
+        // 1. Accordion
+        function renderAccordion() {
+            return `
+                <div class="w-full h-full overflow-y-auto p-6 space-y-6 max-w-5xl mx-auto">
+                    ${data.agents.map(agent => `
+                        <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-850 flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-b border-gray-200 dark:border-gray-700 group">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2 rounded bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-400 group-hover:text-primary group-hover:border-primary/30">
+                                        <i data-lucide="${agent.status === 'offline' ? 'wifi-off' : 'server'}" class="w-5 h-5"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                            ${agent.name}
+                                            ${agent.status === 'offline' ? '<span class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 rounded">Offline</span>' : ''}
+                                        </div>
+                                        <div class="text-xs text-gray-500 font-mono">${agent.ip}</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-6">
+                                    ${agent.status !== 'offline' ? `
+                                        <div class="hidden sm:flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                                            <div class="flex items-center gap-1"><i data-lucide="cpu" class="w-3 h-3"></i> ${agent.metrics.cpu}%</div>
+                                            <div class="flex items-center gap-1"><i data-lucide="memory-stick" class="w-3 h-3"></i> ${agent.metrics.ram}%</div>
+                                        </div>
+                                    ` : ''}
+                                    <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white dark:bg-gray-900/50">
+                                ${agent.servers.length > 0 ? agent.servers.map(server => `
+                                    <div class="px-4 py-3 flex items-center justify-between border-b border-gray-100 dark:border-gray-800/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                                        <div class="flex items-center gap-4 min-w-0">
+                                            <div class="w-1.5 h-10 rounded-full ${server.status === 'running' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"></div>
+                                            <div class="min-w-0">
+                                                <div class="font-medium text-gray-800 dark:text-gray-200 truncate">${server.name}</div>
+                                                <div class="flex items-center gap-2 mt-0.5">
+                                                    ${getTypeBadge(server.type)}
+                                                    <span class="text-xs text-gray-500">${server.version}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-6 flex-shrink-0">
+                                            <div class="text-right hidden sm:block">
+                                                <div class="text-xs text-gray-500 dark:text-gray-400"><i data-lucide="users" class="w-3 h-3 inline mr-1"></i>${server.players}/${server.maxPlayers}</div>
+                                                <div class="text-xs ${server.tps >= 19 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'} font-mono">TPS: ${server.tps.toFixed(1)}</div>
+                                            </div>
+                                            <button class="p-2 rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-primary hover:text-white text-gray-400 border border-gray-200 dark:border-gray-700 transition-colors">
+                                                <i data-lucide="settings-2" class="w-4 h-4"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                `).join('') : `
+                                    <div class="px-4 py-6 text-center text-sm text-gray-500">
+                                        No servers configured
+                                    </div>
+                                `}
+                                ${agent.status !== 'offline' ? `
+                                    <div class="px-4 py-2 bg-gray-50 dark:bg-gray-850/50 border-t border-gray-100 dark:border-gray-800/50">
+                                        <button class="w-full py-2 border border-dashed border-gray-300 dark:border-gray-700 rounded text-xs text-gray-500 hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-2">
+                                            <i data-lucide="plus" class="w-3 h-3"></i> Create New Server
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // 2. Kanban
+        function renderKanban() {
+            return `
+                <div class="flex-1 overflow-x-auto overflow-y-hidden p-6">
+                    <div class="flex gap-6 h-full min-w-max">
+                        ${data.agents.map(agent => `
+                            <div class="w-80 flex flex-col bg-white dark:bg-gray-850 rounded-xl border border-gray-200 dark:border-gray-800 shadow-lg flex-shrink-0">
+                                <div class="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 rounded-t-xl flex-shrink-0">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <h3 class="font-bold text-gray-800 dark:text-gray-200 truncate">${agent.name}</h3>
+                                        <div class="w-2 h-2 rounded-full ${agent.status === 'online' ? 'bg-green-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}"></div>
+                                    </div>
+                                    <div class="text-xs text-gray-500 font-mono mb-3">${agent.ip}</div>
+                                    ${agent.status !== 'offline' ? `
+                                        <div class="grid grid-cols-3 gap-1">
+                                            <div class="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"><div style="width: ${agent.metrics.cpu}%" class="h-full bg-blue-500"></div></div>
+                                            <div class="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"><div style="width: ${agent.metrics.ram}%" class="h-full bg-yellow-500"></div></div>
+                                            <div class="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"><div style="width: ${agent.metrics.disk}%" class="h-full bg-gray-500"></div></div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                
+                                <div class="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-100/50 dark:bg-gray-900/30">
+                                    ${agent.servers.map(server => `
+                                        <div class="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 cursor-pointer group transition-all relative overflow-hidden">
+                                            <div class="absolute left-0 top-0 bottom-0 w-1 ${server.status === 'running' ? 'bg-green-500' : 'bg-gray-400 dark:bg-gray-600'}"></div>
+                                            <div class="flex justify-between items-start mb-2 pl-2">
+                                                <div class="font-bold text-sm text-gray-800 dark:text-gray-200 truncate">${server.name}</div>
+                                                <i data-lucide="more-horizontal" class="w-4 h-4 text-gray-400 hover:text-gray-600 dark:hover:text-white"></i>
+                                            </div>
+                                            <div class="pl-2 flex items-center justify-between">
+                                                <div class="flex gap-1">
+                                                    ${getTypeBadge(server.type)}
+                                                </div>
+                                                <div class="text-xs text-gray-500 font-mono">${server.players}/${server.maxPlayers}</div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                    ${agent.status !== 'offline' ? `
+                                        <button class="w-full py-3 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg text-xs text-gray-500 hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors">
+                                            + Add Server
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                        
+                        <div class="w-80 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-800 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800/30 hover:border-gray-400 dark:hover:border-gray-700 cursor-pointer transition-colors">
+                            <div class="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center mb-2">
+                                <i data-lucide="plus" class="w-6 h-6 text-gray-400 dark:text-gray-500"></i>
+                            </div>
+                            <span class="text-sm font-bold text-gray-500">Connect New Agent</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 3. Tree Grid
+        function renderTreeGrid() {
+            return `
+                <div class="w-full h-full p-6 overflow-y-auto">
+                    <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm min-w-[800px]">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 font-semibold border-b border-gray-200 dark:border-gray-700">
+                                <tr>
+                                    <th class="px-4 py-3 w-64">Name / Host</th>
+                                    <th class="px-4 py-3 w-32">Type</th>
+                                    <th class="px-4 py-3 w-32">Status</th>
+                                    <th class="px-4 py-3 w-48">Metrics / Players</th>
+                                    <th class="px-4 py-3 w-32">Version</th>
+                                    <th class="px-4 py-3 w-24 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200 dark:divide-gray-700/50">
+                                ${data.agents.map(agent => `
+                                    <tr class="bg-gray-100 dark:bg-gray-850 hover:bg-gray-200 dark:hover:bg-gray-800/80 transition-colors">
+                                        <td class="px-4 py-3 font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                            <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500"></i>
+                                            <i data-lucide="server" class="w-4 h-4 text-primary"></i>
+                                            ${agent.name}
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-500 text-xs">${agent.ip}</td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs ${agent.status === 'online' ? 'text-green-700 bg-green-100 dark:text-green-400 dark:bg-green-400/10' : 'text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-400/10'}">
+                                                <span class="w-1.5 h-1.5 rounded-full ${agent.status === 'online' ? 'bg-green-500' : 'bg-red-500'}"></span>
+                                                ${agent.status}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-xs text-gray-500 font-mono">
+                                            CPU: ${agent.metrics.cpu}% / RAM: ${agent.metrics.ram}%
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-500">-</td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button class="text-gray-400 hover:text-gray-600 dark:hover:text-white"><i data-lucide="settings" class="w-4 h-4"></i></button>
+                                        </td>
+                                    </tr>
+                                    
+                                    ${agent.servers.map(server => `
+                                        <tr class="bg-white dark:bg-gray-900/30 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                                            <td class="px-4 py-2 pl-12 text-gray-700 dark:text-gray-300 flex items-center gap-2 border-l-2 border-gray-200 dark:border-gray-800">
+                                                <div class="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-600"></div>
+                                                ${server.name}
+                                            </td>
+                                            <td class="px-4 py-2">${getTypeBadge(server.type)}</td>
+                                            <td class="px-4 py-2">
+                                                 <span class="px-1.5 py-0.5 rounded text-[10px] border ${getStatusColor(server.status)}">${server.status}</span>
+                                            </td>
+                                            <td class="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                                                <i data-lucide="users" class="w-3 h-3 inline"></i> ${server.players}/${server.maxPlayers}
+                                                <span class="ml-2 text-gray-400 dark:text-gray-600">|</span> TPS: ${server.tps}
+                                            </td>
+                                            <td class="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs">${server.version}</td>
+                                            <td class="px-4 py-2 text-right flex justify-end gap-2">
+                                                <button class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-green-600 dark:text-green-400"><i data-lucide="play" class="w-3 h-3"></i></button>
+                                                <button class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-400"><i data-lucide="edit-2" class="w-3 h-3"></i></button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 4. Sidebar
+        function renderSidebar() {
+            return `
+                <!-- Sidebar -->
+                <div class="w-60 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+                    <div class="p-4 text-xs font-bold text-gray-500 uppercase">Agents</div>
+                    <div class="flex-1 px-2 space-y-1">
+                        <button class="w-full text-left px-3 py-2 rounded bg-primary/10 text-primary border border-primary/20 flex justify-between items-center">
+                            <span class="text-sm font-medium">All Servers</span>
+                            <span class="bg-primary text-white text-[10px] px-1.5 rounded-full">5</span>
+                        </button>
+                        ${data.agents.map(agent => `
+                            <button class="w-full text-left px-3 py-2 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200 transition-colors flex justify-between items-center group">
+                                <div class="flex items-center gap-2 truncate">
+                                    <div class="w-2 h-2 rounded-full ${agent.status === 'online' ? 'bg-green-500' : 'bg-red-500'}"></div>
+                                    <span class="text-sm truncate">${agent.name}</span>
+                                </div>
+                                <span class="text-[10px] text-gray-400 dark:text-gray-600 group-hover:text-gray-600 dark:group-hover:text-gray-400">${agent.servers.length}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                    <div class="p-4 border-t border-gray-200 dark:border-gray-800">
+                        <button class="w-full py-2 border border-gray-300 dark:border-gray-700 rounded text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">Manage Agents</button>
+                    </div>
+                </div>
+
+                <!-- Main Content -->
+                <div class="flex-1 bg-gray-50 dark:bg-gray-900 p-6 overflow-y-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-gray-900 dark:text-white">All Servers</h2>
+                        <button class="bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 shadow-lg shadow-primary/30">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Create
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                        ${data.agents.flatMap(a => a.servers.map(s => ({...s, agentName: a.name}))).map(server => `
+                            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:border-gray-400 dark:hover:border-gray-600 transition-all relative overflow-hidden group shadow-sm">
+                                <div class="absolute top-0 left-0 w-1 h-full ${server.status === 'running' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"></div>
+                                <div class="flex justify-between items-start mb-3 pl-2">
+                                    <div>
+                                        <div class="font-bold text-gray-800 dark:text-gray-200 group-hover:text-primary transition-colors">${server.name}</div>
+                                        <div class="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                            <i data-lucide="server" class="w-3 h-3"></i> ${server.agentName}
+                                        </div>
+                                    </div>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] border ${getStatusColor(server.status)}">${server.status}</span>
+                                </div>
+                                <div class="pl-2 grid grid-cols-2 gap-2 text-xs mt-4">
+                                    <div class="bg-gray-100 dark:bg-gray-900/50 p-2 rounded text-center">
+                                        <div class="text-gray-500 mb-0.5">Type</div>
+                                        <div class="font-medium text-gray-700 dark:text-gray-300">${server.type}</div>
+                                    </div>
+                                    <div class="bg-gray-100 dark:bg-gray-900/50 p-2 rounded text-center">
+                                        <div class="text-gray-500 mb-0.5">Players</div>
+                                        <div class="font-medium text-gray-700 dark:text-gray-300">${server.players}/${server.maxPlayers}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 5. Tabbed Focus
+        function renderTabs() {
+            const activeAgent = data.agents[0];
+            return `
+                <div class="w-full h-full flex flex-col">
+                    <!-- Tabs Header -->
+                    <div class="bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-4 pt-4 flex items-end gap-1 overflow-x-auto">
+                        ${data.agents.map((agent, idx) => `
+                            <button class="px-4 py-3 rounded-t-lg border-t border-l border-r relative group min-w-[160px] text-left transition-colors ${idx === 0 ? 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800 z-10' : 'bg-gray-100 dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-900/50'}" style="${idx === 0 ? 'border-bottom-color: transparent' : ''}">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <div class="w-2 h-2 rounded-full ${agent.status === 'online' ? 'bg-green-500' : 'bg-red-500'}"></div>
+                                    <span class="font-bold text-sm truncate ${idx === 0 ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-300'}">${agent.name}</span>
+                                </div>
+                                <div class="text-[10px] opacity-70 font-mono truncate ${idx === 0 ? 'text-gray-600 dark:text-gray-400' : ''}">${agent.ip}</div>
+                                ${idx === 0 ? '<div class="absolute bottom-[-1px] left-0 w-full h-1 bg-gray-50 dark:bg-gray-900"></div>' : ''}
+                            </button>
+                        `).join('')}
+                        <button class="px-3 py-3 mb-1 text-gray-400 hover:text-gray-600 dark:hover:text-white"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                    </div>
+
+                    <!-- Active Tab Content -->
+                    <div class="flex-1 bg-gray-50 dark:bg-gray-900 p-6 overflow-y-auto">
+                        <!-- Agent Summary -->
+                        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-6 flex flex-wrap gap-6 items-center shadow-sm">
+                            <div class="flex-1 min-w-[200px]">
+                                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">${activeAgent.name}</h2>
+                                <div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                                    <span class="flex items-center gap-1"><i data-lucide="globe" class="w-3 h-3"></i> ${activeAgent.ip}</span>
+                                    <span class="flex items-center gap-1 text-green-600 dark:text-green-400"><i data-lucide="check-circle" class="w-3 h-3"></i> Online</span>
+                                </div>
+                            </div>
+                            <div class="flex gap-8 px-6 border-l border-gray-200 dark:border-gray-700">
+                                <div class="text-center">
+                                    <div class="text-xs text-gray-500 mb-1">CPU</div>
+                                    <div class="text-xl font-mono font-bold text-gray-800 dark:text-white">${activeAgent.metrics.cpu}%</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-xs text-gray-500 mb-1">RAM</div>
+                                    <div class="text-xl font-mono font-bold text-yellow-600 dark:text-yellow-400">${activeAgent.metrics.ram}%</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-xs text-gray-500 mb-1">Disk</div>
+                                    <div class="text-xl font-mono font-bold text-gray-800 dark:text-white">${activeAgent.metrics.disk}%</div>
+                                </div>
+                            </div>
+                            <div class="ml-auto">
+                                <button class="bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-white px-3 py-2 rounded text-sm border border-gray-300 dark:border-gray-600">Settings</button>
+                            </div>
+                        </div>
+
+                        <!-- Server List -->
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-end mb-2">
+                                <h3 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Managed Servers</h3>
+                                <button class="text-primary text-sm font-medium hover:underline">+ New Server</button>
+                            </div>
+                            ${activeAgent.servers.map(server => `
+                                <div class="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex items-center gap-4 transition-colors group shadow-sm">
+                                    <div class="p-3 rounded-lg bg-gray-100 dark:bg-gray-900 text-2xl">
+                                        ${server.type === 'Vanilla' ? '🧊' : (server.type === 'Forge' ? '⚒️' : '📄')}
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <h4 class="font-bold text-gray-900 dark:text-white text-lg truncate">${server.name}</h4>
+                                            <span class="px-1.5 py-0.5 rounded text-[10px] border ${getStatusColor(server.status)}">${server.status}</span>
+                                        </div>
+                                        <div class="text-xs text-gray-500 mt-1 flex gap-3">
+                                            <span>${server.type} ${server.version}</span>
+                                            <span>•</span>
+                                            <span>Port: 25565</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-4 text-right">
+                                        <div>
+                                            <div class="text-xs text-gray-500">Players</div>
+                                            <div class="font-bold text-gray-700 dark:text-gray-300">${server.players} <span class="text-gray-400 dark:text-gray-600">/</span> ${server.maxPlayers}</div>
+                                        </div>
+                                        <div class="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-2"></div>
+                                        <div class="flex gap-2">
+                                            <button class="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-green-100 dark:hover:bg-green-600 text-gray-600 dark:text-white rounded transition-colors"><i data-lucide="play" class="w-4 h-4"></i></button>
+                                            <button class="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-white rounded transition-colors"><i data-lucide="more-vertical" class="w-4 h-4"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+
+        // --- Main Logic ---
+
+        function switchLayout(type) {
+            const container = document.getElementById('app-container');
+            const radios = document.querySelectorAll('input[name="layout"]');
+            const label = document.getElementById('current-layout-name');
+            const layoutNames = {
+                'accordion': 'Accordion List',
+                'kanban': 'Kanban Board',
+                'treegrid': 'Tree Data Grid',
+                'sidebar': 'Sidebar Filter',
+                'tabs': 'Tabbed Focus'
+            };
+            
+            // Update State & UI
+            state.layout = type;
+            label.textContent = layoutNames[type];
+            
+            // Sync radio button if function called programmatically
+            radios.forEach(r => {
+                if (r.value === type) r.checked = true;
+            });
+
+            let content = '';
+            switch(type) {
+                case 'accordion': content = renderAccordion(); break;
+                case 'kanban': content = renderKanban(); break;
+                case 'treegrid': content = renderTreeGrid(); break;
+                case 'sidebar': content = renderSidebar(); break;
+                case 'tabs': content = renderTabs(); break;
+            }
+            
+            container.innerHTML = content;
+            lucide.createIcons();
+        }
+
+        function toggleSettingsModal(show) {
+            const modal = document.getElementById('settings-modal');
+            if (show) {
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.querySelector('.backdrop-blur-sm').classList.remove('opacity-0');
+                    modal.querySelector('.transform').classList.remove('scale-95');
+                }, 10);
+            } else {
+                modal.querySelector('.backdrop-blur-sm').classList.add('opacity-0');
+                modal.querySelector('.transform').classList.add('scale-95');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 200);
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            state.theme = state.theme === 'dark' ? 'light' : 'dark';
+            
+            if (state.theme === 'dark') {
+                html.classList.add('dark');
+            } else {
+                html.classList.remove('dark');
+            }
+            
+            // Re-render to apply theme classes to dynamic content
+            switchLayout(state.layout);
+        }
+
+        // Initialize
+        switchLayout('accordion');
+        
+        // Re-render icons when theme changes handled by switchLayout
+    </script>
+</body>
+</html>
