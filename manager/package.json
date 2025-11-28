@@ -1,7 +1,12 @@
 {
   "name": "manager",
   "version": "0.1.0",
-  "description": "GUI Management Console for Minecraft Servers",
+  "descri    tion": "GUI Management Console for Minecraft Servers",
+  "author": {
+    "name": "makkiilikecat",
+    "email": "contact@makkii.jp"
+  },
+  "homepage": "https://github.com/Nekolite-Studio/NL-ServerManager",
   "type": "module",
   "main": "main.js",
   "scripts": {
@@ -11,7 +16,17 @@
     "watch:css": "tailwindcss -i ./src/styles/input.css -o ./dist/output.css --watch",
     "build:preload": "esbuild preload.js --bundle --platform=node --external:electron --outfile=dist/preload.js",
     "watch:preload": "npm-watch build:preload",
-    "build": "npm run build:preload && npm run build:css && electron-builder --linux"
+    
+    "build": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder -mwl",
+
+    "// CI Scripts": "-------------------------------------------------------",
+    "// Note 1": "Artifacts用: 高速化のため圧縮なし(store)。Windowsのみビルド",
+    "ci:artifact:win": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.compression=store",
+    
+    "// Note 2": "Releases用: サイズ削減のため最大圧縮(maximum)。全OSビルド",
+    "ci:release:linux": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --linux --config.compression=maximum",
+    "ci:release:win": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.compression=maximum",
+    "ci:release:mac": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --mac --config.compression=maximum"
   },
   "watch": {
     "watch:css": {
@@ -34,7 +49,7 @@
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.17",
     "concurrently": "^8.2.2",
-    "electron": "^39.2.4",
+    "electron": "39.2.4",
     "electron-builder": "^26.3.2",
     "esbuild": "^0.27.0",
     "npm-watch": "^0.13.0",
@@ -43,8 +58,11 @@
     "ws": "^8.18.3"
   },
   "build": {
-    "appId": "com.example.servermanager",
+    "appId": "jp.makkii.nl-servermanager",
     "productName": "ServerManager",
+    "directories": {
+      "output": "../releases/manager"
+    },
     "files": [
       "main.js",
       "index.html",
@@ -57,10 +75,16 @@
       ]
     },
     "win": {
-      "target": "nsis"
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "mac": {
-      "target": "dmg"
+      "target": [
+        "dmg",
+        "zip"
+      ]
     }
   },
   "dependencies": {

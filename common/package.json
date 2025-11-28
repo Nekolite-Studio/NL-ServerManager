@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "protocol.js",
+  "scripts": {
+    "build": "echo \"common: no build specified\""
+  },
   "dependencies": {
     "zod": "^4.1.13"
   }

@@ -1,0 +1,175 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  # ========================================================
+  # Job 1: Build Agent (Node.js binary)
+  # ========================================================
+  build-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # --- Artifacts Build (Fast & Windows Only) ---
+      - name: Build Agent (Artifacts/Windows)
+        if: github.event_name != 'release'
+        # Windows向けのみビルド
+        run: npm run build:win -w agent
+
+      # --- Release Build (All Platforms) ---
+      - name: Build Agent (Release/All)
+        if: github.event_name == 'release'
+        # 全プラットフォーム向けビルド
+        run: npm run build -w agent
+
+      # --- Upload Artifacts ---
+      - name: Upload Agent Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-binaries
+          path: releases/agent/*
+          if-no-files-found: warn
+
+  # ========================================================
+  # Job 2: Build Manager (Electron App)
+  # ========================================================
+  build-manager:
+    name: Build Manager (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # ========================================================
+      # Artifacts Build Flow (Push event)
+      # 条件: イベントがReleaseではない AND 現在のランナーがWindows
+      # 設定: 高速ビルド, Windows Installerのみ
+      # ========================================================
+      - name: Build Manager for Artifacts (Windows Only)
+        if: github.event_name != 'release' && matrix.os == 'windows-latest'
+        run: npm run ci:artifact:win -w manager
+
+      # ========================================================
+      # Release Build Flow (Release event)
+      # 条件: イベントがRelease (全OSで実行)
+      # 設定: 高圧縮 (maximum compression), Installer + Portable
+      # ========================================================
+      - name: Build Manager for Release (Linux)
+        if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
+        run: npm run ci:release:linux -w manager
+
+      - name: Build Manager for Release (Windows)
+        if: github.event_name == 'release' && matrix.os == 'windows-latest'
+        run: npm run ci:release:win -w manager
+
+      - name: Build Manager for Release (macOS)
+        if: github.event_name == 'release' && matrix.os == 'macos-latest'
+        run: npm run ci:release:mac -w manager
+
+      # ========================================================
+      # Upload Artifacts (Common)
+      # ========================================================
+      - name: Upload Manager Artifacts
+        # Push時はWindowsのみ、Release時は全OSの成果物をアップロード
+        if: (github.event_name == 'release') || (github.event_name != 'release' && matrix.os == 'windows-latest')
+        uses: actions/upload-artifact@v4
+        with:
+          name: manager-${{ matrix.os }}
+          path: releases/manager/*
+          if-no-files-found: ignore
+
+  # ========================================================
+  # Job 3: Create GitHub Release (Only runs on Release event)
+  # ========================================================
+  upload-release-assets:
+    needs: [build-agent, build-manager]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+
+      - name: Display structure of downloaded files
+        run: ls -R assets
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            assets/agent-binaries/*
+            assets/manager-ubuntu-latest/*.AppImage
+            assets/manager-ubuntu-latest/*.deb
+            assets/manager-windows-latest/*.exe
+            assets/manager-macos-latest/*.dmg
+            assets/manager-macos-latest/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ========================================================
+  # (Commented Out) NPM Publish Job
+  # ========================================================
+  # publish-npm:
+  #   needs: [build-agent, build-manager]
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'release'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 18
+  #         registry-url: 'https://registry.npmjs.org'
+  #     - run: npm ci
+  #     - run: npm publish -w common
+  #       env:
+  #         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+  #     - run: npm publish -w agent
+  #       env:
+  #         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+  #     # Manager is usually not published to NPM, but if needed:
+  #     # - run: npm publish -w manager
+  #     #   env:
+  #     #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ========================================================
+  # (Commented Out) Alternative Build Methods
+  # ========================================================
+  # # Example: Using Docker for consistent Linux builds
+  # build-linux-docker:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Build in Docker
+  #       uses: docker://electronuserland/builder:wine
+  #       with:
+  #         args: /bin/bash -c "npm ci && npm run build:linux -w manager"

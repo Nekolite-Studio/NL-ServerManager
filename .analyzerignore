@@ -17,6 +17,7 @@ project-analyzer/
 mockups/
 archive/
 
+# 無視するファイル名/拡張子（ワイルドカードを含む）
 *.pyc
 *.pyd
 *.o
