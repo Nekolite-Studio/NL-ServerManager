@@ -70,15 +70,21 @@ graph TD
 - **`src/services/externalApiService.js`:** Mojang（バージョン情報）や Adoptium（Java ダウンロード情報）などの外部 API との通信、およびサーバー JAR のダウンロード URL 解決を担当する。**HTTP クライアントとして`axios`を使用**し、応答データのパースとエラーハンドリングを一元化する。また、**取得した API 応答を`electron-store`を利用してキャッシュし、外部 API へのリクエスト数を削減する。** ただし、エラー応答はキャッシュせず（または短期間のみキャッシュ）、一時的な障害からの即時回復を可能にする。また、UI からの強制更新（Force Refresh）要求にも対応し、キャッシュをバイパスして最新データを取得する機能を持つ。
 - **`src/services/propertyAnnotations.js`:** `server.properties` の UI 表示用メタデータ（説明文、グループ分け、入力タイプなど）を提供する。`@nl-server-manager/common` の Zod スキーマから動的に生成される。
 
-#### Renderer プロセス (UI)
+#### Renderer プロセス (UI) - v6アーキテクチャ
 
-- **責務分離:** `renderer-state.js` (状態管理)、`renderer-ui.js` (UI 描画)、`renderer.js` (エントリーポイント) に加え、`src/ui/components/` 配下に機能ごとの UI コンポーネント（例: `ServerCreateModal.js`）を配置し、モジュール化を進めている。
-- **`renderer-state.js` (状態):** アプリケーションの UI 状態（表示中のビュー、選択中のサーバー、リアルタイムメトリクスなど）を一元管理する。純粋なデータオブジェクト。
-- **`renderer-ui.js` (描画):** `state`オブジェクトのデータに基づき、HTML (DOM) を構築・更新する責務を担う。特にサーバープロパティ画面では、Main プロセス経由で取得したメタデータを基に、**標準の DOM API を用いて安全に入力フォームを構築**する。HTML 文字列の組み立ては行わない。
-- **`renderer.js` (エントリーポイント):** アプリケーションの初期化、IPC リスナーの設定、DOM イベントリスナーの設定を行うエントリーポイント。
-- **`src/ipc/rendererListeners.js`:** Main プロセスからの IPC イベントを受信し、状態更新や UI 描画をトリガーするリスナー群。
-- **`src/dom/eventHandlers.js`:** ユーザー操作（クリックなど）に対する DOM イベントハンドラ群。
-- **`src/services/metricsService.js`:** メトリクスストリームの開始・停止などのロジックを担当するサービス。
+v6 UIへの刷新により、Rendererプロセスはより宣言的でコンポーネントベースのアーキテクチャに移行しました。
+
+- **`index.html` (スケルトン):** アプリケーションの骨格のみを定義する最小限のHTMLファイル。実際のコンテンツはすべてJavaScriptによって動的に注入されます。
+- **`renderer-state.js` (状態管理):** アプリケーション全体のUI状態（`currentView`, `layoutMode`, `theme`, サーバーリストなど）を一元管理します。`currentView` は `'list'`, `'detail'`, `'physical-detail'` などの値を取り、現在の表示画面を決定します。`getters`を通じて、UIが必要とする形式に整形されたデータを提供します（例: `getUnifiedServerList`）。
+- **`renderer-ui.js` (描画オーケストレーター):** `updateView`関数が中心となり、現在の`state`に基づいて全体のUIを描画する責務を担います。
+    - アプリケーションヘッダーを描画します。
+    - `state.currentView` に応じて、`renderServerDetail` や `renderPhysicalServerDetail` などの詳細ビュー関数、または `state.layoutMode` に基づくレイアウト描画関数を呼び出します。
+    - テーマ（ダーク/ライト）を適用します。
+- **`src/ui/layouts/*.js` (レイアウトエンジン):** 各レイアウト（Accordion, Kanbanなど）のHTML構造を生成する責務を担います。`state`から渡されたデータに基づき、テンプレートリテラルを用いてUIを構築します。
+- **`src/ui/components/*.js` (UIコンポーネント):** `ServerCreateModal.js`、`SettingsModal.js`、`AgentRegisterModal.js`、`EulaModal.js`のように、再利用可能なUI部品（モーダルなど）をクラスとしてカプセル化します。
+- **`renderer.js` (エントリーポイント):** アプリケーションの初期化、IPCリスナー、DOMイベントリスナーの設定を行います。
+- **`src/dom/eventHandlers.js` (イベントハブ):** `document`へのイベント委譲モデルを採用し、すべてのUI操作を`data-action`属性に基づいて処理します。サーバーの起動/停止、設定の保存、UIの表示切り替え（`view-server-detail`, `manage-agent`）、タブ切り替え（`switch-detail-tab`, `switch-physical-detail-tab`）など、ユーザーからのあらゆるインタラクションを仲介し、DOM構造の変更に強い堅牢なイベント処理を実現します。
+- **`src/ipc/rendererListeners.js`:** Mainプロセスからの非同期イベント（サーバー状態更新など）を受け取り、`state`を更新した後、必要に応じて`updateView()`や部分更新関数を呼び出してUIに反映させます。
 
 ### 2.2. Agent
 
@@ -101,12 +107,15 @@ graph TD
 
 ### 3.1. Manager 内部の UI 更新フロー
 
-`manager`の UI は、React や Vue のようなモダンフレームワークに似た思想で設計されています。
+`manager`の UI (v6) は、状態駆動の宣言的なレンダリングモデルを採用しています。
 
-1.  **イベント発生:** ユーザー操作または Main プロセスからの IPC メッセージが `renderer.js` に到着する。
-2.  **状態更新:** `renderer.js` は、イベントに応じて `renderer-state.js` の `state` オブジェクトを更新する。 **直接 DOM を操作することはない。**
-3.  **再描画:** `renderer.js` が `renderer-ui.js` の描画関数（例: `updateView()`）を呼び出す。
-4.  **UI 反映:** `renderer-ui.js` は、更新された `state` オブジェクトを唯一の信頼できる情報源（Single Source of Truth）として参照する。**初回描画時は UI 全体を構築するが、更新時は DOM の全置換を避け、変化した値のみを更新する「部分更新 (Partial Update)」を行う。** これにより、状態と UI の一貫性を保証しつつ、入力中のフォームやスクロール位置などの UI 状態を維持する。
+1.  **イベント発生:** ユーザー操作（例: ボタンクリック）は `eventHandlers.js` によって `data-action` 属性を元に捕捉されます。または、Mainプロセスからの非同期メッセージが `rendererListeners.js` に到着します。
+2.  **状態更新:** イベントハンドラは、`renderer-state.js` の `state` オブジェクトを直接更新します。UIの見た目を直接変更する操作は行いません。
+3.  **再描画トリガー:** 状態が変更された後、ハンドラは `updateView()` 関数を呼び出します。
+4.  **UI構築:** `renderer-ui.js` の `updateView()` 関数が実行されます。
+    - `state.layoutMode` に基づき、`src/ui/layouts/` から適切なレイアウト関数（例: `renderAccordionLayout`）を選択します。
+    - 選択されたレイアウト関数が、`state` と `getters` から最新のデータを取得し、ページのHTMLコンテンツ全体を再構築します。
+5.  **部分更新 (リアルタイムメトリクス):** WebSocketからサーバーのメトリクス更新など、高頻度で発生するイベントについては、`updateView()`による全体再描画を避けます。代わりに、`rendererListeners.js` は、特定のDOM要素を直接更新する部分更新関数（例: `updateAccordionServer()`）を呼び出し、パフォーマンスを最適化します。
 
 ### 3.2. Manager-Agent 間の非同期通信フロー
 

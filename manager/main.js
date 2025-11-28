@@ -14,10 +14,14 @@ let mainWindow;
 // --- Electron App Setup ---
 
 function createWindow() {
-    const { width, height } = getWindowBounds();
+    const { width, height, x, y } = getWindowBounds();
     mainWindow = new BrowserWindow({
-        width,
-        height,
+        width: width,
+        height: height,
+        x: x,
+        y: y,
+        minWidth: 1000,
+        minHeight: 600,
         webPreferences: {
             preload: path.join(__dirname, 'dist/preload.js')
         }
@@ -30,7 +34,9 @@ function createWindow() {
     });
 
     mainWindow.loadFile('index.html');
-    // mainWindow.webContents.openDevTools();
+
+    // 起動時にDevToolsを起動する
+    mainWindow.webContents.openDevTools();
 
     // IPCハンドラのセットアップ
     setupIpcHandlers(mainWindow);

@@ -4,6 +4,10 @@
 export const state = {
     // 現在のメインビュー (list | detail | physical | physical-detail)
     currentView: 'list',
+
+    // --- New UI States (v6) ---
+    layoutMode: 'accordion', // 'accordion' | 'kanban' | 'treegrid' | 'sidebar' | 'tabs'
+    theme: 'dark', // 'dark' | 'light'
     
     // --- Game Servers ---
     // key: agentId, value: Array of server objects
@@ -46,6 +50,25 @@ export const getters = {
     selectedPhysicalServer: () => {
         if (!state.selectedPhysicalServerId) return null;
         return state.physicalServers.get(state.selectedPhysicalServerId);
+    },
+    // (v6) 新UI用の階層化されたデータ構造を取得
+    getUnifiedServerList: () => {
+        const unifiedList = [];
+        for (const [agentId, agentInfo] of state.physicalServers.entries()) {
+            const gameServers = state.agentServers.get(agentId) || [];
+            unifiedList.push({
+                agentInfo,
+                gameServers
+            });
+        }
+        // エイリアス（config.alias）でソート
+        return unifiedList.sort((a, b) => {
+            const aliasA = a.agentInfo.config.alias.toLowerCase();
+            const aliasB = b.agentInfo.config.alias.toLowerCase();
+            if (aliasA < aliasB) return -1;
+            if (aliasA > aliasB) return 1;
+            return 0;
+        });
     }
 };
 

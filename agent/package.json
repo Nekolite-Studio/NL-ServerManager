@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@nl-server-manager/common": "1.0.0",
-    "adm-zip": "^0.5.10",
+    "adm-zip": "^0.5.16",
     "axios": "^1.13.2",
     "pidusage": "^4.0.1",
     "rcon-client": "^4.2.5",

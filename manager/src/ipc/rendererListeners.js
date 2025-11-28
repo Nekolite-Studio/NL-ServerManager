@@ -62,7 +62,10 @@ export function setupIpcListeners() {
                 server.logs.push(payload.payload);
                 if (server.logs.length > 200) server.logs.shift();
             }
-            if (state.currentView === 'list' || (state.currentView === 'detail' && state.selectedServerId === payload.serverId)) {
+            // 部分更新
+            if (state.layoutMode === 'accordion') {
+                window.updateAccordionServer(payload.serverId, server);
+            } else {
                 updateView();
             }
         }
@@ -87,6 +90,8 @@ export function setupIpcListeners() {
             Object.assign(server, payload);
             if (state.currentView === 'detail' && state.selectedServerId === payload.serverId) {
                 updateView();
+            } else if (state.layoutMode === 'accordion') {
+                window.updateAccordionServer(payload.serverId, server);
             }
         }
     });
@@ -97,6 +102,8 @@ export function setupIpcListeners() {
             agent.metrics = payload;
             if (state.currentView === 'physical-detail' && state.selectedPhysicalServerId === agentId) {
                 updateView();
+            } else if (state.layoutMode === 'accordion') {
+                window.updateAccordionAgent(agentId, agent);
             }
         }
     });
@@ -218,6 +225,7 @@ export function setupIpcListeners() {
                         if (payload.config) {
                             Object.assign(server, payload.config);
                         }
+                        // 修正: 古い関数呼び出しを削除。updateView()で全体が更新される。
                         updateView();
                     }
                 }
@@ -250,35 +258,18 @@ export function setupIpcListeners() {
 
     // EULA同意要求の受信
     window.electronAPI.onRequireEulaAgreement(({ agentId, requestId, payload }) => {
-        const eulaModal = document.getElementById('eula-modal');
-        const eulaContentEl = document.getElementById('eula-content');
-        const confirmBtn = document.getElementById('confirm-eula-btn');
-        const cancelBtn = document.getElementById('cancel-eula-btn');
-
-        eulaContentEl.textContent = payload.eulaContent;
-
-        // ボタンのリスナーを一度クリアしてから再設定
-        const newConfirmBtn = confirmBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-
-        const newCancelBtn = cancelBtn.cloneNode(true);
-        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
-
-        newConfirmBtn.addEventListener('click', () => {
-            window.electronAPI.proxyToAgent(agentId, {
-                type: window.electronAPI.Message.ACCEPT_EULA,
-                payload: { serverId: payload.serverId }
-            });
-            eulaModal.classList.add('hidden');
+        window.eulaModal.open({
+            eulaContent: payload.eulaContent,
+            onConfirm: () => {
+                window.electronAPI.proxyToAgent(agentId, {
+                    type: window.electronAPI.Message.ACCEPT_EULA,
+                    payload: { serverId: payload.serverId }
+                });
+            },
+            onCancel: () => {
+                showNotification('EULAへの同意がキャンセルされました。サーバーは起動されません。', 'info');
+            }
         });
-
-        newCancelBtn.addEventListener('click', () => {
-            eulaModal.classList.add('hidden');
-            // ユーザーがキャンセルしたことを通知 (任意)
-            showNotification('EULAへの同意がキャンセルされました。サーバーは起動されません。', 'info');
-        });
-
-        eulaModal.classList.remove('hidden');
     });
 
     // Minecraftバージョンリストの受信
@@ -297,8 +288,14 @@ export function setupIpcListeners() {
 
     // 1. Mainプロセスからの初期ロード完了通知を待つ
     window.electronAPI.onInitialLoadComplete(() => {
-        document.getElementById('loading-overlay').style.display = 'none';
-        document.getElementById('app').style.visibility = 'visible';
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.style.display = 'none';
+        }
+        const appContainer = document.getElementById('app-container');
+        if (appContainer) {
+            appContainer.style.visibility = 'visible';
+        }
         updateView();
     });
 }

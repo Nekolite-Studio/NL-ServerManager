@@ -49,8 +49,8 @@ sequenceDiagram
     Manager_UI->>User: UIに反映
 ```
 
-1.  **UI → Main (IPC) / バージョン情報の取得:** ユーザーが「新規サーバー作成」ボタンをクリックすると、`ServerCreateModal`コンポーネントが初期化され、モーダルを表示します。同時に、コンポーネントはサポートされている全サーバータイプ（Vanilla, Paper, Mohist など）のバージョン情報を取得するための API 呼び出しを並列でメインプロセスに要求します。
-2.  **UI の構築と表示:** メインプロセスは外部 API から取得した情報をレンダラープロセスに返し、`ServerCreateModal`はこれを内部ステートに保持します。取得中もモーダルは表示されており、ローディングインジケータ等で進捗をユーザーに伝えます。データ取得が完了すると、バージョン選択ドロップダウンなどが更新されます。ユーザーがモーダル内でサーバータイプを切り替える際には、キャッシュされたデータが即座に使用されます。
+1.  **UI → Main (IPC) / バージョン情報の取得:** ユーザーがUI上の「新規サーバー作成」ボタンをクリックすると、`eventHandlers.js`がイベントを捕捉し、`serverCreateModal.open()`を呼び出します。
+2.  **UI の構築と表示:** `ServerCreateModal`クラスがモーダルを表示し、内部でサポートされている全サーバータイプのバージョン情報を取得するためのAPI呼び出しを並列でメインプロセスに要求します。メインプロセスは外部APIから取得した情報をレンダラープロセスに返し、モーダル内のドロップダウンなどが更新されます。
     - **強制更新 (Force Refresh):** ユーザーがビルドリストの「更新」ボタンをクリックすると、UI は 15 秒のクールダウンをチェックした後、`forceRefresh: true` フラグを付与して再度 API を呼び出します。これにより、キャッシュをバイパスして最新のビルド情報を取得します。
 3.  **UI → Main (IPC) / サーバー作成要求:** ユーザーが必要な設定を選択し「作成」ボタンをクリックすると、レンダラープロセスは[`preload.js`](manager/preload.js:1)を介して`proxy-to-agent`チャネルに`Message.CREATE_SERVER`メッセージを送信します。
 4.  **Main プロセスでのダウンロード URL 解決:** メインプロセスは、`externalApiService.js`を呼び出して、指定されたサーバータイプとバージョンに対応するサーバー JAR またはインストーラーのダウンロード URL を外部 API から取得します。この際、`externalApiService`はキャッシュを利用して API 呼び出しを最適化します。
@@ -113,7 +113,7 @@ sequenceDiagram
 
 1.  **Agent → Main (WebSocket):** `Agent`は、接続している**すべての**`Manager`クライアントに対し、`Message.SERVER_LIST_UPDATE`メッセージをブロードキャストします。これには`requestId`は含まれません。
 2.  **Main → UI (IPC):** メインプロセスは受信したリストを`server-list-update`チャネルで UI に転送します。
-3.  **UI 更新:** レンダラーは新しいサーバーリストを元に画面を再描画します。
+3.  **UI 更新:** レンダラーは`updateView()`を呼び出し、新しいサーバーリストを元に現在のレイアウトで画面を再描画します。
 
 ### フロー 3: Agent 内部イベントの通知 (例: サーバーログ)
 
@@ -160,7 +160,8 @@ sequenceDiagram
     note right of Agent: EULAが未同意の場合、<br>エラーは発生させず、<br>Managerに通知のみ行う。
     Agent-->>Main: WebSocket: {type: Message.REQUIRE_EULA_AGREEMENT, requestId, payload: {serverId, eulaContent}, ...}
     Main-->>Renderer: IPC: 'require-eula-agreement'
-    Renderer->>User: EULA同意モーダルを表示
+    Renderer->>Renderer: EulaModalコンポーネントを呼び出し
+    Renderer->>User: モーダルを表示
 
     alt ユーザーが同意した場合
         User->>Renderer: 「同意する」をクリック
@@ -180,7 +181,7 @@ sequenceDiagram
 1.  **起動要求:** 通常のサーバー起動フローと同様に、`Manager`から`Agent`へ`Message.CONTROL_SERVER`メッセージが送信されます。
 2.  **EULA チェック:** `Agent`内の`startServer`関数が、サーバープロセスを起動する前に`eula.txt`をチェックします。
 3.  **同意要求 (Agent → Manager):** EULA が未同意の場合、`Agent`はサーバーを起動しません。この状態はエラーとして扱われず、代わりに`Message.REQUIRE_EULA_AGREEMENT`メッセージを`Manager`に返します。`payload`には`eula.txt`の現在の内容が含まれます。
-4.  **モーダル表示:** `Manager`の UI は、このメッセージを受けて EULA 同意モーダルをユーザーに提示します。
+4.  **モーダル表示:** `Manager`の UI は、このメッセージを`rendererListeners.js`で受け取り、`EulaModal`コンポーネントを呼び出して EULA 同意モーダルをユーザーに提示します。
 5.  **同意/拒否 (Manager → Agent):** ユーザーが「同意する」をクリックすると、`Manager`は`Message.ACCEPT_EULA`メッセージを`Agent`に送信します。
 6.  **EULA 更新と再起動:** `Agent`は`eula.txt`を`eula=true`に更新し、再度`startServer`処理を試行します。成功すれば、通常の`Message.OPERATION_RESULT`を返してフローを完了します。
 
@@ -300,33 +301,44 @@ sequenceDiagram
 sequenceDiagram
     participant User as ユーザー
     participant Renderer as レンダラー (UI)
+    participant eventHandlers as eventHandlers.js
+    participant AgentRegisterModal as agentRegisterModal.js
     participant Preload as Preload.js
     participant Main as Manager (メイン)
 
-    User->>Renderer: 「エージェント登録」をクリック
-    Renderer->>Renderer: 登録モーダルを表示
-    User->>Renderer: エージェント情報を入力し、「登録」をクリック
-    Renderer->>Preload: addAgent({ name, ip, port })
+    User->>Renderer: `data-action="add-agent"` ボタンをクリック
+    Renderer->>eventHandlers: clickイベントを捕捉
+    eventHandlers->>AgentRegisterModal: agentRegisterModal.open()
+    AgentRegisterModal->>Renderer: 登録モーダルをHTMLに描画
+    Renderer-->>User: モーダルを表示
+    
+    User->>AgentRegisterModal: エージェント情報を入力し、「登録」をクリック
+    AgentRegisterModal->>Preload: addAgent({ alias, ip, port })
     Preload->>Main: IPC 'add-agent'
+    
     Main->>Main: 新しいAgentのIDを生成
     Main->>Main: storeManagerで設定ファイルに保存
     Main->>Main: agentManagerで接続を開始
+    
     Main-->>Preload: IPC 'add-agent' の応答 (Promise解決)
-    Preload-->>Renderer: addAgentのPromiseが解決
-    Renderer->>Renderer: UIを更新 (通知表示、モーダルを閉じる)
+    Preload-->>AgentRegisterModal: Promiseが解決
+    AgentRegisterModal->>AgentRegisterModal: close() を呼び出しモーダルを閉じる
+    
     Main->>Preload: IPC 'agent-list' (agentManagerがブロードキャスト)
     Preload->>Renderer: onAgentListコールバック実行
     Renderer->>Renderer: 物理サーバーリストを再描画
 ```
 
-1.  **UI → Main (IPC):** レンダラープロセスは、ユーザーが入力した設定情報（エイリアス、IP、ポート）を[`preload.js`](manager/preload.js:1)経由で`add-agent`チャネルに送信します。
-2.  **Main プロセスでの処理:**
+1.  **ユーザー操作とイベント捕捉:** ユーザーが `data-action="add-agent"` 属性を持つボタンをクリックします。`eventHandlers.js` はこのクリックイベントを捕捉します。
+2.  **モーダル表示:** `eventHandlers.js` は、グローバルにインスタンス化されている `agentRegisterModal` の `open()` メソッドを呼び出します。`AgentRegisterModal` クラスは、自身のHTMLをモーダルコンテナに描画し、ユーザーに表示します。
+3.  **情報入力と送信 (UI → Main):** ユーザーがモーダルに必要な情報（エイリアス、IP、ポート）を入力し、「登録」ボタンをクリックします。モーダルのイベントリスナーがこれを検知し、`window.electronAPI.addAgent()` を呼び出して、[`preload.js`](manager/preload.js:1)経由で`add-agent`チャネルにIPCメッセージを送信します。
+4.  **Main プロセスでの処理:**
     - `mainHandlers.js` はリクエストを受け取ります。
     - `uuidv4`で新しい Agent の一意な ID を生成します。
     - `storeManager.js` を呼び出し、新しい Agent 情報を`config.json`に永続化します。
     - `agentManager.js` を呼び出し、新しい Agent への WebSocket 接続シーケンスを開始します。
-3.  **Main → UI (IPC):** `agentManager`は Agent リストの変更を検知し、`agent-list`チャネルを通じて更新されたリストを UI にブロードキャストします。
-4.  **UI 更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。
+5.  **Main → UI (IPC):** `agentManager`は Agent リストの変更を検知し、`agent-list`チャネルを通じて更新されたリストを UI にブロードキャストします。
+6.  **UI 更新:** レンダラーは`updateView()`を呼び出し、新しいAgentリストを元に現在のレイアウトで画面を再描画します。
 
 ### フロー 9: エージェントの削除
 
@@ -360,4 +372,37 @@ sequenceDiagram
     - `agentManager.js` を呼び出し、対象 Agent の WebSocket 接続を終了させ、管理マップから削除します。
     - `storeManager.js` を呼び出し、`config.json`から対象 Agent の情報を削除して永続化します。
 3.  **Main → UI (IPC):** `agentManager`は Agent リストの変更を検知し、`agent-list`チャネルを通じて更新されたリストを UI にブロードキャストします。
-4.  **UI 更新:** レンダラーは新しいリストを受け取り、物理サーバー一覧画面を再描画します。
+4.  **UI 更新:** レンダラーは`updateView()`を呼び出し、新しいAgentリストを元に現在のレイアウトで画面を再描画します。
+
+### フロー 10: ホストマシン詳細画面の表示
+
+ユーザーが UI 上で特定のホストマシン（Agent）の設定ボタンをクリックした際のフローです。このフローは Manager 内部で完結し、Agent との通信はメトリクスストリーミングの開始要求のみです。
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Renderer as レンダラー (UI)
+    participant eventHandlers as eventHandlers.js
+    participant state as renderer-state.js
+    participant rendererUI as renderer-ui.js
+    participant Main as Manager (メイン)
+
+    User->>Renderer: `data-action="manage-agent"` ボタンをクリック
+    Renderer->>eventHandlers: clickイベントを捕捉
+    eventHandlers->>state: state.currentView = 'physical-detail'
+    eventHandlers->>state: state.selectedPhysicalServerId = agentId
+    eventHandlers->>Main: IPC: メトリクスストリーム開始を要求
+    eventHandlers->>rendererUI: updateView() を呼び出し
+
+    rendererUI->>state: 現在の state を確認
+    note right of rendererUI: state.currentView が 'physical-detail' のため
+    rendererUI->>rendererUI: renderPhysicalServerDetail() を実行
+    rendererUI->>Renderer: ホストマシン詳細画面を描画
+
+    Main->>Agent: WebSocket: {type: Message.START_METRICS_STREAM, ...}
+```
+
+1.  **ユーザー操作とイベント捕捉:** ユーザーが `data-action="manage-agent"` 属性を持つボタンをクリックします。`eventHandlers.js` はこのクリックイベントを捕捉します。
+2.  **状態更新:** `eventHandlers.js` は `renderer-state.js` の `state` オブジェクトを更新し、`currentView` を `'physical-detail'` に、`selectedPhysicalServerId` をクリックされた Agent の ID に設定します。同時に、メトリクスのリアルタイム更新を開始するために、Main プロセスへメトリクスストリームの開始を要求します。
+3.  **再描画トリガー:** `eventHandlers.js` は `updateView()` 関数を呼び出します。
+4.  **UI 構築:** `renderer-ui.js` の `updateView()` は、`state.currentView` が `'physical-detail'` であることを検知し、`renderPhysicalServerDetail()` 関数を呼び出します。この関数が、選択されたホストマシンの情報に基づいて詳細画面の HTML を構築し、画面に描画します。

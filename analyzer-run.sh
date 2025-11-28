@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# =============================================================================
+# NL-ProjectAnalyzer 起動スクリプト
+# 
+# 概要:
+#   project_analyzer.py を実行するためのラッパースクリプトです。
+#   このスクリプトを各プロジェクトのルートディレクトリに配置して使用します。
+#
+# 使い方:
+#   ./analyzer-run.sh [オプション]
+# =============================================================================
+
+# エラー発生時にスクリプトを停止する場合はコメントアウトを外す
+# set -e
+
+# スクリプトが存在するディレクトリに移動（ここをカレントディレクトリ=解析対象ルートとして実行）
+cd "$(dirname "$0")"
+
+# =============================================================================
+# ⚙️ 設定 (Configuration)
+# =============================================================================
+
+# プロジェクトアナライザ本体 (project_analyzer.py) があるディレクトリを指定します。
+# デフォルト: "." (この起動スクリプトと同じディレクトリ)
+# 例: "/home/user/tools/nl-analyzer" や "../shared-tools" など
+ANALYZER_DIR="/home/devuser/code-workspaces/nekolite/NL-ProjectAnalyzer"
+
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. 環境チェック
+# -----------------------------------------------------------------------------
+
+# スクリプト本体のパスを生成
+ANALYZER_SCRIPT="${ANALYZER_DIR}/project_analyzer.py"
+
+# スクリプト本体が存在するか確認
+if [ ! -f "$ANALYZER_SCRIPT" ]; then
+    echo "❌ エラー: アナライザ本体が見つかりません。"
+    echo "   設定されたパス: $ANALYZER_SCRIPT"
+    echo "   'ANALYZER_DIR' 変数が正しく設定されているか確認してください。"
+    exit 1
+fi
+
+# Pythonコマンドの検出
+# 優先順位:
+# 1. アナライザディレクトリ内の .venv (仮想環境)
+# 2. システムの python3
+# 3. システムの python
+
+PYTHON_CMD=""
+VENV_DIR="${ANALYZER_DIR}/.venv"
+
+# 仮想環境のチェック
+if [ -f "${VENV_DIR}/bin/python" ]; then
+    PYTHON_CMD="${VENV_DIR}/bin/python"
+elif [ -f "${VENV_DIR}/Scripts/python" ]; then
+    # Windows (Git Bash等)
+    PYTHON_CMD="${VENV_DIR}/Scripts/python"
+elif [ -f "${VENV_DIR}/Scripts/python.exe" ]; then
+    # Windows (Exe直接)
+    PYTHON_CMD="${VENV_DIR}/Scripts/python.exe"
+fi
+
+if [ -n "$PYTHON_CMD" ]; then
+    echo "🐍 仮想環境を使用します: ${VENV_DIR}"
+else
+    # システムPythonへのフォールバック
+    if command -v python3 &>/dev/null; then
+        PYTHON_CMD=python3
+    elif command -v python &>/dev/null; then
+        PYTHON_CMD=python
+    else
+        echo "❌ エラー: Pythonが見つかりません。Python 3.6以上をインストールしてください。"
+        exit 1
+    fi
+fi
+
+# lizardのチェック（情報表示のみ）
+if ! $PYTHON_CMD -c "import lizard" &>/dev/null; then
+    echo "⚠️  注意: 'lizard' ライブラリが見つかりません。複雑度計測はスキップされます。"
+    echo "   (インストール推奨: pip install lizard)"
+    echo ""
+fi
+
+# -----------------------------------------------------------------------------
+# 2. 解析実行
+# -----------------------------------------------------------------------------
+
+echo "🚀 NL-ProjectAnalyzer を起動します..."
+echo "   Target : $(pwd)"
+echo "   Script : $ANALYZER_SCRIPT"
+
+# project_analyzer.py の実行
+# "$@" はこのシェルスクリプトに渡された引数（-o など）をそのままPythonスクリプトに渡す
+$PYTHON_CMD "$ANALYZER_SCRIPT" "$@"
+
+EXIT_CODE=$?
+
+# -----------------------------------------------------------------------------
+# 3. 終了処理
+# -----------------------------------------------------------------------------
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo ""
+    echo "✅ 解析が正常に完了しました。"
+else
+    echo ""
+    echo "❌ 解析中にエラーが発生しました (Exit Code: $EXIT_CODE)。"
+fi
+
+exit $EXIT_CODE

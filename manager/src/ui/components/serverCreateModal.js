@@ -1,3 +1,5 @@
+import { logUiInteraction } from "../../utils/logger.js";
+
 export class ServerCreateModal {
   constructor() {
     this.state = {
@@ -89,26 +91,30 @@ export class ServerCreateModal {
     // Default selection
     this.state.selectedType = this.serverTypes[0].items[0];
 
+    // DOM要素はrender後に取得するため、ここでは空で初期化
+    this.els = {};
+    this.modalContainer = document.getElementById('modal-container');
+    this.componentName = 'ServerCreateModal';
+  }
+
+  init() {
+    // DOM要素の取得
     this.els = {
       overlay: document.getElementById("modalOverlay"),
       backdrop: document.getElementById("modalBackdrop"),
       content: document.getElementById("modalContent"),
-
       serverNameInput: document.getElementById("serverNameInput"),
       hostSelect: document.getElementById("hostSelect"),
-
       typeBtn: document.getElementById("typeSelectBtn"),
       typeMenu: document.getElementById("typeDropdownMenu"),
       selectedIcon: document.getElementById("selectedTypeIcon"),
       selectedName: document.getElementById("selectedTypeName"),
       selectedDesc: document.getElementById("selectedTypeDesc"),
-
       snapshotToggle: document.getElementById("snapshotToggle"),
       mcVersionSelect: document.getElementById("mcVersionSelect"),
       versionCount: document.getElementById("versionCountLabel"),
       manifestUpdated: document.getElementById("manifestUpdatedText"),
       refreshManifestBtn: document.getElementById("refreshManifestBtn"),
-
       buildBlock: document.getElementById("buildBlock"),
       buildLabel: document.getElementById("buildLabel"),
       buildSelect: document.getElementById("buildSelect"),
@@ -116,19 +122,13 @@ export class ServerCreateModal {
       buildStatus: document.getElementById("buildStatusBadge"),
       buildUpdated: document.getElementById("buildUpdatedText"),
       refreshBuildBtn: document.getElementById("refreshBuildBtn"),
-
       javaVer: document.getElementById("javaVersionDisplay"),
-
       createBtn: document.getElementById("createBtn"),
       createBtnText: document.getElementById("createBtnText"),
       createSpinner: document.getElementById("createSpinner"),
       cancelBtn: document.getElementById("cancelCreateBtn"),
     };
 
-    this.init();
-  }
-
-  init() {
     if (!this.els.overlay || !this.els.createBtn) {
         console.error("ServerCreateModal: Critical DOM elements missing.");
         return;
@@ -144,19 +144,19 @@ export class ServerCreateModal {
 
   setupListeners() {
     this.els.cancelBtn.addEventListener("click", () => this.close());
-    this.els.overlay.addEventListener("click", (e) => {
-      if (
-        e.target === this.els.overlay ||
-        e.target === document.querySelector("#modalOverlay > div.p-4")
-      ) {
-        this.close();
-      }
-    });
+    // overlayのクリックイベントはdata-actionでeventHandlers.jsで処理する
+    // this.els.overlay.addEventListener("click", ...
 
     // Type Selection
     this.els.typeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.toggleTypeDropdown();
+      logUiInteraction({
+        event: 'click',
+        action: 'toggle-type-dropdown',
+        component: this.componentName,
+        element: e.currentTarget
+      });
     });
 
     document.addEventListener("click", (e) => {
@@ -173,22 +173,42 @@ export class ServerCreateModal {
     // Version & Build
     this.els.snapshotToggle.addEventListener("change", (e) => {
       this.state.showSnapshots = e.target.checked;
+      logUiInteraction({
+        event: 'change',
+        action: 'toggle-snapshots',
+        component: this.componentName,
+        element: e.target,
+        details: { showSnapshots: this.state.showSnapshots }
+      });
       this.updateVersionList();
     });
 
     this.els.mcVersionSelect.addEventListener("change", (e) => {
       this.state.selectedVersion = e.target.value;
+       logUiInteraction({
+        event: 'change',
+        action: 'select-mc-version',
+        component: this.componentName,
+        element: e.target,
+        details: { version: this.state.selectedVersion }
+      });
       this.updateBuildList();
       this.updateJavaVersion();
     });
 
     // Refresh Buttons
-    this.els.refreshManifestBtn.addEventListener("click", () => {
+    this.els.refreshManifestBtn.addEventListener("click", (e) => {
       this.animateButton(this.els.refreshManifestBtn);
+      logUiInteraction({
+        event: 'click',
+        action: 'refresh-manifest',
+        component: this.componentName,
+        element: e.currentTarget
+      });
       this.fetchInitialData(true); // Force refresh
     });
 
-    this.els.refreshBuildBtn.addEventListener("click", () => {
+    this.els.refreshBuildBtn.addEventListener("click", (e) => {
       if (this.state.selectedType.id === "vanilla") return;
 
       const now = Date.now();
@@ -199,12 +219,30 @@ export class ServerCreateModal {
       }
       this.state.lastRefreshTime = now;
 
+      logUiInteraction({
+        event: 'click',
+        action: 'refresh-builds',
+        component: this.componentName,
+        element: e.currentTarget,
+        details: {
+          serverType: this.state.selectedType.id,
+          mcVersion: this.state.selectedVersion
+        }
+      });
       this.animateButton(this.els.refreshBuildBtn);
       this.updateBuildList(true); // Force refresh
     });
 
     // Create
-    this.els.createBtn.addEventListener("click", () => this.handleCreate());
+    this.els.createBtn.addEventListener("click", (e) => {
+      logUiInteraction({
+        event: 'click',
+        action: 'create-server-request',
+        component: this.componentName,
+        element: e.currentTarget
+      });
+      this.handleCreate()
+    });
   }
 
   animateButton(btnElement, duration = 1000) {
@@ -216,8 +254,13 @@ export class ServerCreateModal {
     }
   }
 
-  async open() {
-    this.els.overlay.classList.remove("hidden");
+  async open(agentId = null) {
+    this.render(); // HTMLを生成・挿入
+    this.init(); // DOM要素の取得とリスナー設定
+
+    logUiInteraction({ event: 'mount', action: 'open-modal', component: this.componentName, details: { agentId } });
+
+    // アニメーション
     setTimeout(() => {
       this.els.backdrop.classList.remove("opacity-0");
       this.els.content.classList.remove("opacity-0", "scale-95");
@@ -225,18 +268,28 @@ export class ServerCreateModal {
 
     this.resetForm();
     await this.fetchInitialData();
+
+    if (agentId && this.els.hostSelect) {
+      this.els.hostSelect.value = agentId;
+    }
   }
 
   close() {
+    logUiInteraction({ event: 'unmount', action: 'close-modal', component: this.componentName });
+    if (!this.els.backdrop || !this.els.content) {
+      this.modalContainer.innerHTML = '';
+      return;
+    }
     this.els.backdrop.classList.add("opacity-0");
     this.els.content.classList.add("opacity-0", "scale-95");
 
     setTimeout(() => {
-      this.els.overlay.classList.add("hidden");
+      this.modalContainer.innerHTML = '';
     }, 200);
   }
 
   resetForm() {
+    if (!this.els.serverNameInput) return;
     this.els.serverNameInput.value = "";
     this.els.createBtn.disabled = false;
     this.els.createBtnText.classList.remove("hidden");
@@ -247,6 +300,7 @@ export class ServerCreateModal {
   }
 
   async fetchInitialData(isRefresh = false) {
+    if (!this.els.manifestUpdated || !this.els.hostSelect) return;
     if (isRefresh) {
       this.els.manifestUpdated.textContent = "Updating manifest...";
       this.els.manifestUpdated.className = "text-blue-400 font-medium";
@@ -327,7 +381,145 @@ export class ServerCreateModal {
     this.updateVersionList();
   }
 
+render() {
+    const modalHTML = `
+    <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" data-action="close-create-modal">
+        <div id="modalBackdrop" class="absolute inset-0 opacity-0 transition-opacity"></div>
+        
+        <div id="modalContent" class="w-full max-w-4xl bg-gray-900 border border-gray-700 rounded-xl shadow-2xl transform opacity-0 scale-95 transition-all mx-4 flex flex-col md:flex-row h-[680px] overflow-hidden" onclick="event.stopPropagation()">
+            
+            <div class="w-full md:w-5/12 bg-gray-950 p-6 flex flex-col border-b md:border-b-0 md:border-r border-gray-700 z-20 overflow-y-auto">
+                <h2 class="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                    <i data-lucide="plus-circle" class="w-5 h-5 text-blue-500"></i>
+                    新規サーバー作成
+                </h2>
+
+                <div class="space-y-6 flex-1">
+                    <div>
+                        <label for="serverNameInput" class="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">サーバー名</label>
+                        <div class="relative">
+                            <i data-lucide="tag" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                            <input type="text" id="serverNameInput" placeholder="My Awesome Server" class="w-full bg-gray-800 text-white pl-10 pr-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder-gray-600">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="hostSelect" class="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">ホストマシン</label>
+                        <div class="relative">
+                            <i data-lucide="server" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                            <select id="hostSelect" class="w-full bg-gray-800 text-white pl-10 pr-8 py-3 rounded-lg border border-gray-700 focus:border-blue-500 outline-none appearance-none cursor-pointer hover:bg-gray-750 transition-colors"></select>
+                            <i data-lucide="chevron-down" class="absolute right-3 top-3.5 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                        </div>
+                    </div>
+
+                    <div class="relative">
+                        <label class="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wider">サーバータイプ</label>
+                        <button id="typeSelectBtn" type="button" class="w-full bg-gray-800 hover:bg-gray-750 border border-gray-600 hover:border-gray-500 text-left rounded-lg p-3 flex items-center justify-between group transition-colors duration-200">
+                            <div class="flex items-center gap-3">
+                                <div id="selectedTypeIcon" class="w-10 h-10 rounded bg-gray-700 flex items-center justify-center text-xl transition-colors group-hover:bg-gray-600"></div>
+                                <div>
+                                    <div id="selectedTypeName" class="font-bold text-white text-lg leading-tight"></div>
+                                    <div id="selectedTypeDesc" class="text-xs text-gray-400"></div>
+                                </div>
+                            </div>
+                            <i data-lucide="chevrons-up-down" class="w-5 h-5 text-gray-500"></i>
+                        </button>
+                        <div id="typeDropdownMenu" class="absolute top-full left-0 w-full mt-2 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50 hidden max-h-60 overflow-y-auto">
+                            </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full md:w-7/12 bg-gray-900 p-8 flex flex-col relative z-10 overflow-y-auto">
+                
+                <div class="flex-1 space-y-8">
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-end border-b border-gray-800 pb-2">
+                             <label class="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                                <i data-lucide="box" class="w-3 h-3"></i> Minecraft Base
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <label for="snapshotToggle" class="text-xs text-gray-400 cursor-pointer">Show Snapshots</label>
+                                <input type="checkbox" id="snapshotToggle" class="h-4 w-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-600">
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <select id="mcVersionSelect" class="w-full bg-gray-800 text-white pl-4 pr-8 py-2.5 rounded-lg border border-gray-700 hover:border-gray-500 focus:border-blue-500 outline-none appearance-none cursor-pointer text-sm transition-colors"></select>
+                                <i data-lucide="chevron-down" class="absolute right-3 top-3 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                            </div>
+                            <button id="refreshManifestBtn" title="Refresh Manifest" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors">
+                                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                        <div class="flex justify-between text-[11px] text-gray-500 px-1">
+                            <span id="manifestUpdatedText"></span>
+                            <span id="versionCountLabel"></span>
+                        </div>
+                    </div>
+
+                    <div id="buildBlock" class="space-y-4 pt-2 border-t border-gray-800/50">
+                        <div class="flex justify-between items-end pb-1">
+                            <label id="buildLabel" class="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2"></label>
+                            <span id="buildStatusBadge"></span>
+                        </div>
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <select id="buildSelect" class="w-full bg-gray-800 text-white pl-4 pr-8 py-2.5 rounded-lg border border-gray-700 hover:border-gray-500 focus:border-blue-500 outline-none appearance-none cursor-pointer text-sm transition-colors"></select>
+                                <i id="buildIcon" data-lucide="package" class="absolute right-10 top-3 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                                <i data-lucide="chevron-down" class="absolute right-3 top-3 w-4 h-4 text-gray-500 pointer-events-none"></i>
+                            </div>
+                            <button id="refreshBuildBtn" title="Refresh Builds" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors">
+                                <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                        <div class="text-[11px] text-gray-500 px-1 text-right">
+                             <span id="buildUpdatedText"></span>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-900/20 border border-blue-800/50 rounded-lg p-4">
+                        <h3 class="text-sm font-bold text-blue-400 mb-2 flex items-center gap-2">
+                            <i data-lucide="cpu" class="w-4 h-4"></i> Environment Check
+                        </h3>
+                        <ul class="text-sm space-y-2 text-gray-300">
+                            <li class="flex justify-between">
+                                <span>Java Runtime:</span>
+                                <span class="font-mono text-white bg-gray-800 px-2 rounded" id="javaVersionDisplay">Checking...</span>
+                            </li>
+                            <li class="flex justify-between text-gray-500">
+                                <span>Status:</span>
+                                <span class="text-green-400">Ready to Install</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                </div>
+
+                <div class="mt-auto pt-6 border-t border-gray-800 flex justify-end gap-3">
+                    <button id="cancelCreateBtn" data-action="close-create-modal" class="px-5 py-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors font-medium text-sm">
+                        キャンセル
+                    </button>
+                    <button id="createBtn" class="px-8 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded-lg shadow-lg shadow-blue-900/30 transition-all font-bold text-sm flex items-center gap-2 justify-center min-w-[120px]">
+                        <span id="createBtnText" class="flex items-center gap-2">
+                            <i data-lucide="check" class="w-4 h-4"></i> 作成
+                        </span>
+                        <div id="createSpinner" class="hidden flex items-center gap-2">
+                            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> 送信中...
+                        </div>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    `;
+    this.modalContainer.innerHTML = modalHTML;
+  }
+
   renderTypeDropdown() {
+    if (!this.els.typeMenu) return;
     let html = "";
     this.serverTypes.forEach((cat) => {
       html += `<div class="p-2">`;
@@ -353,7 +545,15 @@ export class ServerCreateModal {
       .querySelectorAll("button[data-type-id]")
       .forEach((btn) => {
         btn.addEventListener("click", (e) => {
-          this.selectType(btn.dataset.typeId);
+          const typeId = btn.dataset.typeId;
+          logUiInteraction({
+            event: 'click',
+            action: 'select-server-type',
+            component: this.componentName,
+            element: e.currentTarget,
+            details: { typeId }
+          });
+          this.selectType(typeId);
         });
       });
   }

@@ -2,6 +2,7 @@
 import { setupIpcListeners } from './src/ipc/rendererListeners.js';
 import { setupDomListeners } from './src/dom/eventHandlers.js';
 import { updateView } from './renderer-ui.js';
+import { EulaModal } from './src/ui/components/eulaModal.js';
 
 // このファイルはアプリケーションのエントリーポイントとして機能します。
 // 1. モジュールの初期化
@@ -11,14 +12,7 @@ import { updateView } from './renderer-ui.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- 初期化 ---
-    // DOM要素をグローバル変数に代入 (renderer-ui.js で定義されたグローバル変数)
-    window.serverListView = document.getElementById('server-list-view');
-    window.physicalServerListView = document.getElementById('physical-server-list-view');
-    window.serverDetailView = document.getElementById('server-detail-view');
-    window.physicalServerDetailView = document.getElementById('physical-server-detail-view');
-    window.serverListContainer = document.getElementById('server-list');
-    window.navGameServers = document.getElementById('nav-game-servers');
-    window.navPhysicalServers = document.getElementById('nav-physical-servers');
+    window.eulaModal = new EulaModal();
 
     // IPCリスナーの設定
     setupIpcListeners();
