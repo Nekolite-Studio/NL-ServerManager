@@ -17,11 +17,11 @@
     "build:preload": "esbuild preload.js --bundle --platform=node --external:electron --outfile=dist/preload.js",
     "watch:preload": "npm-watch build:preload",
     
-    "build": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder -mwl",
+    "build": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder -wl",
 
     "// CI Scripts": "-------------------------------------------------------",
     "// Note 1": "Artifacts用: 高速化のため圧縮なし(store)。Windowsのみビルド",
-    "ci:artifact:win": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.compression=store",
+    "ci:artifact:win": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.win.target=portable --config.compression=store",
     
     "// Note 2": "Releases用: サイズ削減のため最大圧縮(maximum)。全OSビルド",
     "ci:release:linux": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --linux --config.compression=maximum",
@@ -66,7 +66,8 @@
     "files": [
       "main.js",
       "index.html",
-      "dist/"
+      "dist/",
+      "src/"
     ],
     "linux": {
       "target": [
