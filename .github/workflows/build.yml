@@ -22,8 +22,8 @@ jobs:
           node-version: 18
           cache: 'npm'
 
-      - name: Install Base Dependencies
-        run: npm install
+      - name: Install Root Dependencies
+        run: npm run install:root
       - name: Install All Dependencies (Sub-scripts)
         run: npm run install:all
 

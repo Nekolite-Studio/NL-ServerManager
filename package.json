@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "// Setup": "---",
-    "install:all": "concurrently \"npm:install:root\" \"npm:install:common\" \"npm:install:manager\" \"npm:install:agent\"",
+    "install:all": "concurrently \"npm:install:common\" \"npm:install:manager\" \"npm:install:agent\"",
     "install:root": "npm install",
     "install:common": "npm install --prefix common",
     "install:manager": "npm install --prefix manager",
