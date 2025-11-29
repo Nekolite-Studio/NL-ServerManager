@@ -23,19 +23,19 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm install && npm run install:all
 
       # --- Artifacts Build (Fast & Windows Only) ---
       - name: Build Agent (Artifacts/Windows)
         if: github.event_name != 'release'
         # Windows向けのみビルド
-        run: npm run build:win -w agent
+        run: npm run build:agent:win
 
       # --- Release Build (All Platforms) ---
       - name: Build Agent (Release/All)
         if: github.event_name == 'release'
         # 全プラットフォーム向けビルド
-        run: npm run build -w agent
+        run: npm run build:agent
 
       # --- Upload Artifacts ---
       - name: Upload Agent Artifacts
@@ -65,7 +65,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm run install:all
 
       # ========================================================
       # Artifacts Build Flow (Push event)
