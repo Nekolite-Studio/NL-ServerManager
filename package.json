@@ -8,30 +8,22 @@
     "install:common": "npm install --prefix common",
     "install:manager": "npm install --prefix manager",
     "install:agent": "npm install --prefix agent",
-
     "// Development": "---",
     "dev": "concurrently -k \"npm:dev:manager\" \"npm:dev:agent\"",
     "dev:manager": "npm run dev --prefix manager",
     "dev:agent": "npm run dev --prefix agent",
-
     "// Build": "---",
     "build": "concurrently \"npm:build:manager\" \"npm:build:agent\"",
-
     "build:manager": "npm run build --prefix manager",
     "build:manager:win": "npm run build:win --prefix manager",
     "build:manager:linux": "npm run build:linux --prefix manager",
     "build:manager:mac": "npm run build:mac --prefix manager",
-
     "build:agent": "npm run build --prefix agent",
     "build:agent:win": "npm run build:win --prefix agent",
     "build:agent:linux": "npm run build:linux --prefix agent",
     "build:agent:mac": "npm run build:mac --prefix agent"
   },
   "devDependencies": {
-    "commonjs-to-es-module-codemod": "^0.5.7",
     "concurrently": "^9.2.1"
-  },
-  "dependencies": {
-    "jscodeshift": "^17.3.0"
   }
 }
