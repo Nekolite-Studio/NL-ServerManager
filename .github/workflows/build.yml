@@ -22,8 +22,10 @@ jobs:
           node-version: 18
           cache: 'npm'
 
-      - name: Install Dependencies
-        run: npm install && npm run install:all
+      - name: Install Base Dependencies
+        run: npm install
+      - name: Install All Dependencies (Sub-scripts)
+        run: npm run install:all
 
       # --- Artifacts Build (Fast & Windows Only) ---
       - name: Build Agent (Artifacts/Windows)
