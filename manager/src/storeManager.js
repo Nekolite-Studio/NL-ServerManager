@@ -1,4 +1,5 @@
-import { dialog, app } from 'electron';
+import electron from 'electron';
+const { dialog, app } = electron;
 import Store from 'electron-store';
 import fs from 'fs';
 

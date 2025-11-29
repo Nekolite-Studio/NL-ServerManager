@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron';
+import electron from 'electron';
+const { ipcMain } = electron;
 import { v4 as uuidv4 } from 'uuid';
 import * as agentManager from '../services/agentManager.js';
 import * as externalApiService from '../services/externalApiService.js';

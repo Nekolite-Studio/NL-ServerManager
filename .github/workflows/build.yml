@@ -23,7 +23,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       # --- Artifacts Build (Fast & Windows Only) ---
       - name: Build Agent (Artifacts/Windows)
@@ -65,11 +65,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
-
-      - name: Install Manager Dependencies
-        run: npm ci
-        working-directory: manager
+        run: npm install
 
       # ========================================================
       # Artifacts Build Flow (Push event)

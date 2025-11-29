@@ -21,7 +21,7 @@
     "outputPath": "../releases/agent"
   },
   "dependencies": {
-    "@nl-server-manager/common": "1.0.0",
+    "@nl-server-manager/common": "file:../common",
     "adm-zip": "^0.5.16",
     "axios": "^1.13.2",
     "pidusage": "^4.0.1",
@@ -30,7 +30,8 @@
     "tar": "^7.5.2",
     "unzipper": "^0.12.3",
     "ws": "^8.18.3",
-    "zod": "^4.1.13"
+    "zod": "^4.1.13",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "pkg": "^5.8.1"
