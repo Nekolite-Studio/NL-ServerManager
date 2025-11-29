@@ -89,7 +89,7 @@
     }
   },
   "dependencies": {
-    "@nl-server-manager/common": "1.0.0",
+    "@nl-server-manager/common": "file:../common",
     "axios": "^1.13.2",
     "electron-store": "^8.1.0",
     "zod": "^4.1.13"
