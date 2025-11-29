@@ -7,9 +7,11 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm:dev:manager\" \"npm:dev:agent\"",
-    "dev:manager": "npm run dev -w manager",
+    "dev:manager": "npm run dev --prefix manager",
     "dev:agent": "npm run dev -w agent",
-    "build": "npm run build --workspaces"
+    "build": "concurrently \"npm:build:workspaces\" \"npm:build:manager\"",
+    "build:workspaces": "npm run build --workspaces --if-present",
+    "build:manager": "npm run build --prefix manager"
   },
   "devDependencies": {
     "commonjs-to-es-module-codemod": "^0.5.7",

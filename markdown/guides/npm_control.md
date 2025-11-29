@@ -1,16 +1,18 @@
-# プロジェクト管理ガイド: npm Workspaces を利用したビルド・起動・更新
+# プロジェクト管理ガイド: npm Workspaces とスタンドアロンパッケージの併用
 
-このドキュメントでは、`manager` (Electron GUI)、`agent` (Node.js CLI)、および`common` (共有モジュール) の3つのパッケージを npm Workspaces を利用して管理する方法について説明します。
+このドキュメントでは、`agent` (Node.js CLI) と `common` (共有モジュール) を npm Workspaces で管理しつつ、`manager` (Electron GUI) をスタンドアロンパッケージとして独立して管理する方法について説明します。
 
 ## 1. プロジェクト構造
 
-このプロジェクトはモノレポ（monorepo）として構成されており、以下のワークスペースが含まれています。
+このプロジェクトは、大部分がモノレポ（monorepo）として構成されていますが、一部のパッケージは独立して管理されています。
 
--   `manager/`: Minecraftサーバー管理用のElectronベースのGUIアプリケーション。
--   `agent/`: 各物理サーバー上で動作し、`manager`からの指示を受けたり、サーバー情報を提供するNode.jsベースのエージェント。
--   `common/`: `manager`と`agent`間で共有されるプロトコル定義やスキーマなどのモジュール。
+-   **npm Workspaces 管理下のパッケージ:**
+    -   `agent/`: 各物理サーバー上で動作するNode.jsベースのエージェント。
+    -   `common/`: `agent`と`manager`間で共有されるプロトコル定義やスキーマ。
+-   **スタンドアロンパッケージ:**
+    -   `manager/`: Electronのパッケージング要件のため、npm Workspacesの管理から外されたGUIアプリケーション。
 
-ルートディレクトリの `package.json` がこれらのワークスペースを管理しています。
+ルートディレクトリの `package.json` は `agent` と `common` のみをワークスペースとして管理しています。
 
 ```
 .
@@ -32,11 +34,26 @@
 
 ## 2. 依存関係のインストール
 
-プロジェクト全体の依存関係は、ルートディレクトリで以下のコマンドを実行することでインストールされます。npm Workspaces の機能により、各ワークスペースの依存関係も適切に解決され、ルートの `node_modules` に一元的に管理されます。
+依存関係のインストールは、**2段階のプロセス**に分かれています。
+
+### ステップ1: Workspaces (`agent`, `common`) のインストール
+
+まず、プロジェクトのルートディレクトリで以下のコマンドを実行し、`agent`と`common`の依存関係をインストールします。
 
 ```bash
 npm install
 ```
+
+### ステップ2: `manager` (スタンドアロン) のインストール
+
+次に、`manager`ディレクトリに移動し、`manager`専用の依存関係をインストールします。
+
+```bash
+cd manager
+npm install
+```
+
+**重要:** `manager`の依存関係を追加・更新した場合は、必ず`manager`ディレクトリ内で`npm install`を実行してください。
 
 ## 3. アプリケーションの起動 (開発モード)
 
@@ -44,12 +61,10 @@ npm install
 
 ### 3.1. `manager` (Electron GUI) の起動
 
-`manager`アプリケーションはGUIを持つため、デスクトップ環境（Windows, macOS, GUI付きLinuxなど）で実行する必要があります。
+`manager`はルートディレクトリから起動できます。
 
 ```bash
 npm run dev:manager
-# または
-npm run dev -w manager
 ```
 
 **推奨される開発環境:**
@@ -57,7 +72,7 @@ npm run dev -w manager
 
 ### 3.2. `agent` (Node.js CLI) の起動
 
-`agent`アプリケーションはCLIベースであり、サーバー環境（Ubuntu Serverなど）で実行されます。
+`agent`はワークスペース管理下にあるため、ルートディレクトリから起動できます。
 
 ```bash
 npm run dev:agent
@@ -80,53 +95,29 @@ npm run dev
 
 ## 4. アプリケーションのビルドとパッケージ作成
 
-`manager`アプリケーションは `electron-builder` を使用して、各プラットフォーム向けの実行可能ファイルとインストーラーを生成します。ビルドされた成果物は `manager/dist/` ディレクトリに出力されます。
+プロジェクト全体のビルドは、ルートディレクトリで以下のコマンドを実行することで行えます。
 
-### 4.1. `manager` のビルド
+```bash
+npm run build
+```
 
-開発時のビルド時間を短縮するため、デフォルトの `build` コマンドはLinux向けのみを生成するように設定されています。
+このコマンドは、`manager`、`agent`、`common`のすべてのパッケージを並行してビルドします。
 
-*   **プリロードスクリプトのバンドル:** `manager`の`dev`スクリプトでは、`esbuild`を使用して`preload.js`をバンドルするステップが含まれています。これはElectronの`contextIsolation`が有効な環境でESM形式の`preload.js`を正しく動作させるために必要です。
-    ```json
-    // manager/package.json の一部
-    "scripts": {
-      "dev": "concurrently \"npm:watch:preload\" \"electron . --no-sandbox ...\"",
-      "build:preload": "esbuild preload.js --bundle --platform=node --external:electron --outfile=dist/preload.js",
-      "watch:preload": "npm-watch build:preload",
-      "build": "npm run build:preload && electron-builder --linux"
-    },
-    "build": {
-      "files": [
-        "main.js",
-        "index.html",
-        "dist/preload.js" // バンドルされたpreload.jsを含める
-      ],
-      // ...
-    }
-    ```
+### 4.1. 個別のパッケージのビルド
 
-*   **Linux向けビルド (開発用):**
+特定のパッケージのみをビルドしたい場合は、以下のコマンドを使用します。
+
+-   **`manager`のビルド:**
     ```bash
-    npm run build -w manager
+    npm run build:manager
+    # または
+    npm run build --prefix manager
     ```
-    これにより、Linux向けの `AppImage` や `deb` パッケージが生成されます。
 
-*   **Windows向けビルド:**
+-   **`agent`のビルド:**
     ```bash
-    npm run build -w manager -- --win
+    npm run build -w agent
     ```
-    これにより、Windows向けの `exe` インストーラーが生成されます。
-
-*   **macOS向けビルド:**
-    ```bash
-    npm run build -w manager -- --mac
-    ```
-    これにより、macOS向けの `dmg` パッケージが生成されます。
-    **注意:** macOS以外のOSでmacOS向けビルドを行う場合、特定の依存関係や設定（例: コードサイニング）が必要になる場合があります。
-
-### 4.2. `agent` のビルド
-
-`agent`はNode.jsアプリケーションであるため、通常は特別なビルドステップは不要です。`npm install` で依存関係がインストールされていれば、`node index.js` で実行可能です。もしTypeScriptなどで記述する場合は、別途トランスパイルのステップが必要になります。
 
 ## 5. 依存関係の更新
 
@@ -138,43 +129,44 @@ npm run dev
 npm update
 ```
 
-### 5.2. 特定のワークスペースの依存関係の更新
+### 5.2. 特定のパッケージの依存関係の更新
 
-特定のワークスペース（例: `manager`）の依存関係のみを更新したい場合は、そのワークスペースのディレクトリに移動して `npm update` を実行するか、ルートから `--workspace` フラグを使用します。
+-   **`manager`の更新:**
+    `manager`ディレクトリ内で`npm update`を実行します。
+    ```bash
+    cd manager
+    npm update
+    ```
 
-```bash
-# manager ワークスペースの依存関係のみを更新
-npm update -w manager
-```
+-   **`agent`または`common`の更新:**
+    ルートディレクトリから`--workspace`フラグを使用して更新します。
+    ```bash
+    # agent ワークスペースの依存関係のみを更新
+    npm update -w agent
+    ```
 
 ## 6. 新しいワークスペースの追加
 
-新しいアプリケーションやライブラリをモノレポに追加したい場合は、以下の手順で行います。
+新しいパッケージをワークスペースに追加する手順は従来通りです。
 
 1.  新しいディレクトリを作成します (例: `packages/my-new-app`)。
 2.  そのディレクトリ内で `npm init` を実行し、`package.json` を作成します。
 3.  ルートの `package.json` の `workspaces` 配列に、新しいワークスペースのパスを追加します。
-    ```json
-    // package.json (ルート)
-    {
-      "name": "server-manager-monorepo",
-      "private": true,
-      "workspaces": [
-        "manager",
-        "agent",
-        "common", // ここに追加
-        "packages/my-new-app" 
-      ],
-      // ...
-    }
-    ```
-4.  ルートディレクトリで `npm install` を実行し、新しいワークスペースをモノレポに統合します。
+4.  ルートディレクトリで `npm install` を実行します。
+
+**注意:** 新しいパッケージを`manager`のようにスタンドアロンで管理したい場合は、`workspaces`配列には追加しないでください。
 
 ## 7. `npm start` と `npm run dev` の違い
 
-`manager/package.json` には以下のスクリプトが定義されています。
+このセクションの原則は変わりませんが、`manager`のコマンドは`manager`ディレクトリ内で実行する必要があります。
 
-*   `"start": "npm run build && electron ."`: このコマンドは、まずアプリケーションをビルドし、その後ビルドされたElectronアプリケーションを実行します。これは、最終的なパッケージング前のテストや、ビルド済みアプリの実行を想定しています。
-*   `"dev": "concurrently \"npm:watch:preload\" \"electron . --no-sandbox ..."`: このコマンドは、開発中に`preload.js`の変更を監視しつつ、Electronを開発モードで起動します。ホットリロードなどの開発ツールと組み合わせて使用され、開発中の高速なイテレーションに適しています。
-
-開発中は `npm run dev:manager` を使用し、ビルド後の動作確認や配布前の最終チェックには `npm run start -w manager` を使用するのが一般的です。
+-   **開発中:**
+    ```bash
+    cd manager
+    npm run dev
+    ```
+-   **ビルド後の実行:**
+    ```bash
+    cd manager
+    npm start
+    ```

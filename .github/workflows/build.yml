@@ -67,6 +67,10 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Install Manager Dependencies
+        run: npm ci
+        working-directory: manager
+
       # ========================================================
       # Artifacts Build Flow (Push event)
       # 条件: イベントがReleaseではない AND 現在のランナーがWindows
@@ -74,7 +78,8 @@ jobs:
       # ========================================================
       - name: Build Manager for Artifacts (Windows Only)
         if: github.event_name != 'release' && matrix.os == 'windows-latest'
-        run: npm run ci:artifact:win -w manager
+        run: npm run ci:artifact:win
+        working-directory: manager
 
       # ========================================================
       # Release Build Flow (Release event)
@@ -83,15 +88,18 @@ jobs:
       # ========================================================
       - name: Build Manager for Release (Linux)
         if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
-        run: npm run ci:release:linux -w manager
+        run: npm run ci:release:linux
+        working-directory: manager
 
       - name: Build Manager for Release (Windows)
         if: github.event_name == 'release' && matrix.os == 'windows-latest'
-        run: npm run ci:release:win -w manager
+        run: npm run ci:release:win
+        working-directory: manager
 
       - name: Build Manager for Release (macOS)
         if: github.event_name == 'release' && matrix.os == 'macos-latest'
-        run: npm run ci:release:mac -w manager
+        run: npm run ci:release:mac
+        working-directory: manager
 
       # ========================================================
       # Upload Artifacts (Common)
