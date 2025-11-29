@@ -9,13 +9,29 @@ on:
 
 jobs:
   # ========================================================
+  # Job 0: Prepare Matrix (どのOSでビルドするか決定)
+  # ========================================================
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      os_matrix: ${{ steps.set-matrix.outputs.os_matrix }}
+    steps:
+      - id: set-matrix
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo 'os_matrix=["ubuntu-latest", "windows-latest", "macos-latest"]' >> $GITHUB_OUTPUT
+          else
+            echo 'os_matrix=["windows-latest"]' >> $GITHUB_OUTPUT
+          fi
+
+  # ========================================================
   # Job 1: Build Agent (Node.js binary)
   # ========================================================
   build-agent:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -24,22 +40,19 @@ jobs:
 
       - name: Install Root Dependencies
         run: npm run install:root
-      - name: Install All Dependencies (Sub-scripts)
+      - name: Install All Dependencies
         run: npm run install:all
 
-      # --- Artifacts Build (Fast & Windows Only) ---
+      # --- Artifacts Build (Windows Only) ---
       - name: Build Agent (Artifacts/Windows)
         if: github.event_name != 'release'
-        # Windows向けのみビルド
         run: npm run build:agent:win
 
       # --- Release Build (All Platforms) ---
       - name: Build Agent (Release/All)
         if: github.event_name == 'release'
-        # 全プラットフォーム向けビルド
         run: npm run build:agent
 
-      # --- Upload Artifacts ---
       - name: Upload Agent Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -51,11 +64,13 @@ jobs:
   # Job 2: Build Manager (Electron App)
   # ========================================================
   build-manager:
+    needs: prepare-matrix
     name: Build Manager (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJson(needs.prepare-matrix.outputs.os_matrix) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -68,23 +83,19 @@ jobs:
 
       - name: Install Root Dependencies
         run: npm run install:root
-      - name: Install All Dependencies (Sub-scripts)
+      - name: Install All Dependencies
         run: npm run install:all
 
       # ========================================================
-      # Artifacts Build Flow (Push event)
-      # 条件: イベントがReleaseではない AND 現在のランナーがWindows
-      # 設定: 高速ビルド, Windows Installerのみ
+      # Push時のフロー (Windowsのみ)
       # ========================================================
-      - name: Build Manager for Artifacts (Windows Only)
+      - name: Build Manager for Artifacts (Windows)
         if: github.event_name != 'release' && matrix.os == 'windows-latest'
         run: npm run ci:artifact:win
         working-directory: manager
 
       # ========================================================
-      # Release Build Flow (Release event)
-      # 条件: イベントがRelease (全OSで実行)
-      # 設定: 高圧縮 (maximum compression), Installer + Portable
+      # Release時のフロー (全OS)
       # ========================================================
       - name: Build Manager for Release (Linux)
         if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
@@ -102,11 +113,9 @@ jobs:
         working-directory: manager
 
       # ========================================================
-      # Upload Artifacts (Common)
+      # Upload Artifacts
       # ========================================================
       - name: Upload Manager Artifacts
-        # Push時はWindowsのみ、Release時は全OSの成果物をアップロード
-        if: (github.event_name == 'release') || (github.event_name != 'release' && matrix.os == 'windows-latest')
         uses: actions/upload-artifact@v4
         with:
           name: manager-${{ matrix.os }}
@@ -114,7 +123,7 @@ jobs:
           if-no-files-found: ignore
 
   # ========================================================
-  # Job 3: Create GitHub Release (Only runs on Release event)
+  # Job 3: Create GitHub Release
   # ========================================================
   upload-release-assets:
     needs: [build-agent, build-manager]
@@ -128,7 +137,7 @@ jobs:
         with:
           path: assets
 
-      - name: Display structure of downloaded files
+      - name: Display structure
         run: ls -R assets
 
       - name: Upload Release Assets
