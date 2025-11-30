@@ -17,16 +17,18 @@
     "build:preload": "esbuild preload.js --bundle --platform=node --external:electron --outfile=dist/preload.js",
     "watch:preload": "npm-watch build:preload",
     
-    "build": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder -wl",
+    "clean": "rimraf dist out",
+    "build": "npm run clean && concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --config.compression=store",
+    "build:win": "npm run clean && concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.win.target=portable --config.compression=store",
 
     "// CI Scripts": "-------------------------------------------------------",
     "// Note 1": "Artifacts用: 高速化のため圧縮なし(store)。Windowsのみビルド",
-    "ci:artifact:win": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.win.target=portable --config.compression=store",
-    
+    "ci:artifact:win": "npm run clean && concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.win.target=portable --config.compression=store",
+
     "// Note 2": "Releases用: サイズ削減のため最大圧縮(maximum)。全OSビルド",
-    "ci:release:linux": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --linux --config.compression=maximum",
-    "ci:release:win": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.compression=maximum",
-    "ci:release:mac": "concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --mac --config.compression=maximum"
+    "ci:release:linux": "npm run clean && concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --linux --config.compression=maximum",
+    "ci:release:win": "npm run clean && concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --win --config.compression=maximum",
+    "ci:release:mac": "npm run clean && concurrently \"npm run build:preload\" \"npm run build:css\" && electron-builder --mac --config.compression=maximum"
   },
   "watch": {
     "watch:css": {
@@ -46,16 +48,22 @@
       "quiet": false
     }
   },
+  "dependencies": {
+    "@nl-server-manager/common": "file:../common",
+    "axios": "^1.13.2",
+    "electron-store": "^11.0.2",
+    "uuid": "^13.0.0",
+    "ws": "^8.18.3",
+    "zod": "^4.1.13"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.17",
-    "concurrently": "^8.2.2",
+    "concurrently": "^9.2.1",
     "electron": "39.2.4",
     "electron-builder": "^26.3.2",
     "esbuild": "^0.27.0",
     "npm-watch": "^0.13.0",
-    "tailwindcss": "^4.1.17",
-    "uuid": "^13.0.0",
-    "ws": "^8.18.3"
+    "tailwindcss": "^4.1.17"
   },
   "build": {
     "appId": "jp.makkii.nl-servermanager",
@@ -64,8 +72,12 @@
       "output": "../releases/manager"
     },
     "files": [
-      "main.js",
       "index.html",
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "renderer-ui.js",
+      "renderer-state.js",
       "dist/",
       "src/"
     ],
@@ -87,11 +99,5 @@
         "zip"
       ]
     }
-  },
-  "dependencies": {
-    "@nl-server-manager/common": "file:../common",
-    "axios": "^1.13.2",
-    "electron-store": "^8.1.0",
-    "zod": "^4.1.13"
   }
 }

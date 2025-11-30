@@ -13,7 +13,11 @@
     "dev:manager": "npm run dev --prefix manager",
     "dev:agent": "npm run dev --prefix agent",
     "// Build": "---",
-    "build": "concurrently \"npm:build:manager\" \"npm:build:agent\"",
+    "clean": "rimraf releases",
+    "build": "npm run clean && concurrently \"npm:build:manager\" \"npm:build:agent\"",
+    "build:win": "npm run clean && concurrently \"npm:build:manager:win\" \"npm:build:agent:win\"",
+    "build:linux": "npm run clean && concurrently \"npm:build:manager:linux\" \"npm:build:agent:linux\"",
+    "build:mac": "npm run clean && concurrently \"npm:build:manager:mac\" \"npm:build:agent:mac\"",
     "build:manager": "npm run build --prefix manager",
     "build:manager:win": "npm run build:win --prefix manager",
     "build:manager:linux": "npm run build:linux --prefix manager",
@@ -24,6 +28,7 @@
     "build:agent:mac": "npm run build:mac --prefix agent"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "rimraf": "^6.1.2"
   }
 }
